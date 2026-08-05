@@ -130,6 +130,7 @@ object Importer {
             val wb = jxl.Workbook.getWorkbook(input)
             val chunks = mutableListOf<String>()
             val seen = HashSet<String>()
+            var sourceChars = 0  // ★ 跨所有 sheet 累加（声明在 sheet 循环外）
 
             for (si in 0 until wb.numberOfSheets) {
                 val sh = wb.getSheet(si)
@@ -158,7 +159,6 @@ object Importer {
                 val optCol = cols["可选项"]
                 val ansCol = cols["答案"] ?: cols["正确答案"]
 
-                var sourceChars = 0
                 for (r in (headerRow + 1) until sh.rows) {
                     val stem = stemCol?.let { sh.getCell(it, r)?.contents?.trim() } ?: ""
                     if (stem.isEmpty() || stem == "题目内容" || stem == "题干") continue
