@@ -240,32 +240,57 @@ fun ImportScreen(onBack: () -> Unit) {
     var parsedQuestions by remember { mutableStateOf<List<Question>?>(null) }
     var sourceFileName by remember { mutableStateOf("") }
     var importMsg by remember { mutableStateOf("") }
+    var parsing by remember { mutableStateOf(false) }
     var showNameDialog by remember { mutableStateOf(false) }
     var bankName by remember { mutableStateOf("") }
 
     val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
-            try {
-                val content = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                if (content != null) {
-                    val fileName = context.contentResolver.query(
-                        uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null
-                    )?.use { cursor ->
-                        if (cursor.moveToFirst()) cursor.getString(0) else null
-                    } ?: uri.lastPathSegment ?: "未知题库"
-                    val cleanName = fileName.substringAfterLast('/').substringAfterLast("%2F").replace("%20", " ")
-                    sourceFileName = cleanName
-                    val questions = QuestionBank.parseTxt(content, cleanName)
-                    if (questions.isNotEmpty()) {
+            val fileName = try {
+                context.contentResolver.query(
+                    uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
+                } ?: uri.lastPathSegment ?: "未知题库"
+            } catch (_: Exception) { uri.lastPathSegment ?: "未知题库" }
+            val cleanName = fileName.substringAfterLast('/').substringAfterLast("%2F").replace("%20", " ")
+            sourceFileName = cleanName
+            parsing = true
+            importMsg = ""
+            // 后台线程解析（大文件不阻塞 UI）
+            Thread {
+                val result = try {
+                    Importer.parse(context, uri, cleanName)
+                } catch (e: Exception) {
+                    Importer.ParseResult(emptyList(), error = "解析异常：${e.message}")
+                }
+                runOnUiThreadCompat(context) {
+                    parsing = false
+                    if (result.error != null) {
+                        importMsg = result.error
+                        return@runOnUiThreadCompat
+                    }
+                    if (result.chunks.isNotEmpty()) {
+                        // 切块模式：每块整段作为题干（题干+选项+答案原样保留）
+                        val questions = result.chunks.map { chunk ->
+                            Question(
+                                id = System.currentTimeMillis() + (0..999).random(),
+                                bankId = 0,
+                                stem = chunk,
+                                options = emptyList(),
+                                answer = "",
+                                source = cleanName
+                            )
+                        }
                         parsedQuestions = questions
                         val defaultName = cleanName.substringBeforeLast(".")
                         bankName = if (defaultName.isNotBlank() && defaultName != cleanName) defaultName else cleanName
                         showNameDialog = true
                     } else {
-                        importMsg = "解析失败：未识别到题目\n格式：题干 + A.选项 + 答案:B + 空行分隔"
+                        importMsg = "解析失败：未识别到题目"
                     }
                 }
-            } catch (e: Exception) { importMsg = "读取失败：${e.message}" }
+            }.start()
         }
     }
 
@@ -279,15 +304,24 @@ fun ImportScreen(onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("支持的格式", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6A1B9A))
                     Spacer(Modifier.height(8.dp))
-                    Text("题干文字\nA. 选项A\nB. 选项B\nC. 选项C\n答案: B\n\n（空行分隔下一题）", fontSize = 13.sp, color = Color(0xFF333333))
+                    Text("✅ .txt / .docx / .pdf（文字版）\n✅ 三种排版都识别：有序号 / 无序号空行分隔 / 无序号选项对齐\n❌ 扫描版 PDF（无文本层）无法导入\n❌ .xls 请用电脑端转换工具转 txt 后导入", fontSize = 13.sp, color = Color(0xFF333333))
                 }
             }
             Spacer(Modifier.height(20.dp))
             Button(
-                onClick = { fileLauncher.launch(arrayOf("text/plain", "application/octet-stream", "*/*")) },
+                onClick = { fileLauncher.launch(arrayOf("text/plain", "application/octet-stream", "application/pdf", "*/*")) },
                 modifier = Modifier.fillMaxWidth().height(48.dp),
+                enabled = !parsing,
                 colors = ButtonDefaults.buttonColors(containerColor = Green)
-            ) { Text("选择 .txt 文件导入", fontSize = 15.sp) }
+            ) { Text("选择文件导入（.txt/.docx/.pdf）", fontSize = 15.sp) }
+            if (parsing) {
+                Spacer(Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Green)
+                    Spacer(Modifier.width(12.dp))
+                    Text("正在解析题库...", fontSize = 13.sp, color = Color(0xFF666666))
+                }
+            }
             if (importMsg.isNotEmpty()) {
                 Spacer(Modifier.height(16.dp))
                 Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))) {
@@ -314,13 +348,22 @@ fun ImportScreen(onBack: () -> Unit) {
                 TextButton(onClick = {
                     val name = bankName.trim().ifEmpty { "未命名题库" }
                     bank.importBank(name = name, sourceFile = sourceFileName, type = "manual", questions = parsedQuestions!!)
-                    importMsg = "导入成功！\n题库名：$name\n题目数：${parsedQuestions!!.size}"
+                    importMsg = "导入成功！\n题库名：$name\n题目数：${parsedQuestions!!.size}\n（源文件 ${if (sourceFileName.endsWith(".xls") || sourceFileName.endsWith(".xlsx")) "请用电脑工具转换" else "已自动转换"}）"
                     parsedQuestions = null
                     showNameDialog = false
                 }) { Text("确定导入", color = Green, fontWeight = FontWeight.Bold) }
             },
             dismissButton = { TextButton(onClick = { showNameDialog = false; parsedQuestions = null }) { Text("取消", color = Red) } }
         )
+    }
+}
+
+/** 在 Compose 外跑 UI 线程（导入解析用的 Thread 里） */
+private fun runOnUiThreadCompat(context: android.content.Context, block: () -> Unit) {
+    if (context is android.app.Activity) {
+        context.runOnUiThread(block)
+    } else {
+        block()
     }
 }
 

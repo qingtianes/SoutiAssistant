@@ -982,8 +982,12 @@ class FloatWindowService : Service() {
                 textSize = 11f
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(Color.parseColor("#222222"))
-                maxLines = 2
-                ellipsize = TextUtils.TruncateAt.END
+                if (sr.question.options.isEmpty() && sr.question.answer.isEmpty()) {
+                    // ★ 切块模式：整块原样显示（题干+选项+答案都在里面），不截断
+                } else {
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                }
             })
             // ★ 显示选项（考试 APP 会改选项顺序，必须让用户看到选项对照）
             sr.question.options.forEach { opt ->

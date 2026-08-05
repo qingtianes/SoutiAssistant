@@ -49,4 +49,6 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-tooling")
     // ML Kit 中文 OCR（离线免费，阿里云镜像有此包）
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
+    // PDF 文本提取（PDFBox 安卓移植版，仅文字版 PDF）
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
 }
