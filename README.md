@@ -62,7 +62,7 @@ E:\SoutiAssistant\
 ### 6. 导入题库
 主页 → 题库管理 → 手动导入 → 选 .txt 文件
 
-**支持源格式**（`tools/convert_bank.py` 自动转换）：
+**支持源格式**（`tools/convert_bank.py` 自动转换 / APP 内 AI 导入直接解析）：
 - `.xls` 旧版 Excel（列式：题型/题干/可选项/答案）
 - `.docx` Word（整块切块：题干+选项+答案原样保留，不拆字段）
 - `.txt` 纯文本（三种排版都可识别）

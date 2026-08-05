@@ -304,7 +304,7 @@ fun ImportScreen(onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("支持的格式", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6A1B9A))
                     Spacer(Modifier.height(8.dp))
-                    Text("✅ .txt / .docx / .pdf（文字版）\n✅ 三种排版都识别：有序号 / 无序号空行分隔 / 无序号选项对齐\n❌ 扫描版 PDF（无文本层）无法导入\n❌ .xls 请用电脑端转换工具转 txt 后导入", fontSize = 13.sp, color = Color(0xFF333333))
+                    Text("✅ .txt / .docx / .pdf（文字版） / .xls\n✅ 三种排版都识别：有序号 / 无序号空行分隔 / 无序号选项对齐\n❌ 扫描版 PDF（无文本层）无法导入", fontSize = 13.sp, color = Color(0xFF333333))
                 }
             }
             Spacer(Modifier.height(20.dp))
@@ -313,7 +313,7 @@ fun ImportScreen(onBack: () -> Unit) {
                 modifier = Modifier.fillMaxWidth().height(48.dp),
                 enabled = !parsing,
                 colors = ButtonDefaults.buttonColors(containerColor = Green)
-            ) { Text("选择文件导入（.txt/.docx/.pdf）", fontSize = 15.sp) }
+            ) { Text("选择文件导入（txt/docx/pdf/xls）", fontSize = 15.sp) }
             if (parsing) {
                 Spacer(Modifier.height(16.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
