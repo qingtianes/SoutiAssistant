@@ -24,10 +24,14 @@ data class Bank(
     val name: String,
     val sourceFile: String,
     val createdAt: Long,
+    val sourceModifiedAt: Long = 0,  // ★ 源文件最后修改时间（SAF DATE_MODIFIED）
     val type: String // "manual" 或 "ai"
 ) {
     fun formattedTime(): String =
         SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(createdAt))
+    fun formattedSourceTime(): String =
+        if (sourceModifiedAt > 0) SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(sourceModifiedAt))
+        else ""
 }
 
 /**
@@ -59,6 +63,7 @@ class QuestionBank(context: Context) {
                 name = o.getString("name"),
                 sourceFile = o.optString("sourceFile", ""),
                 createdAt = o.optLong("createdAt", 0),
+                sourceModifiedAt = o.optLong("sourceModifiedAt", 0),
                 type = o.optString("type", "manual")
             )
         }
@@ -100,13 +105,14 @@ class QuestionBank(context: Context) {
     }
 
     // ===== 导入（创建题库 + 添加题目）=====
-    fun importBank(name: String, sourceFile: String, type: String, questions: List<Question>): Bank {
+    fun importBank(name: String, sourceFile: String, sourceModifiedAt: Long = 0, type: String, questions: List<Question>): Bank {
         val bankId = System.currentTimeMillis()
         val bank = Bank(
             id = bankId,
             name = name,
             sourceFile = sourceFile,
-            createdAt = System.currentTimeMillis(),
+            createdAt = bankId,
+            sourceModifiedAt = sourceModifiedAt,
             type = type
         )
         // 给题目关联 bankId
@@ -125,6 +131,7 @@ class QuestionBank(context: Context) {
                 put("name", b.name)
                 put("sourceFile", b.sourceFile)
                 put("createdAt", b.createdAt)
+                put("sourceModifiedAt", b.sourceModifiedAt)
                 put("type", b.type)
             })
         }

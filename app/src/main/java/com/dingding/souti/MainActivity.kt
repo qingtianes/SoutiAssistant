@@ -209,10 +209,10 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
         SectionTitle("题库管理")
         // ★ 横向 4 图标网格（智能导入 / 题库总览 / 公共题库 / 远程导入）
         Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-            BankIcon("📁", "智能导入", enabled = true, note = "txt/docx/pdf/xls") { onNavigate("import") }
-            BankIcon("📚", "题库总览", enabled = true, note = "查看已导入") { onNavigate("overview") }
-            BankIcon("🌐", "公共题库", enabled = false, note = "在线通用题库") {}
-            BankIcon("🔗", "远程导入", enabled = false, note = "URL/IP 导入") {}
+            BankIcon("📁", "智能导入", enabled = true) { onNavigate("import") }
+            BankIcon("📚", "题库总览", enabled = true) { onNavigate("overview") }
+            BankIcon("🌐", "公共题库", enabled = false) {}
+            BankIcon("🔗", "远程导入", enabled = false) {}
         }
         Spacer(Modifier.height(16.dp))
         SectionTitle("设置")
@@ -243,6 +243,7 @@ fun ImportScreen(onBack: () -> Unit) {
     val bank = remember { QuestionBank(context) }
     var parsedQuestions by remember { mutableStateOf<List<Question>?>(null) }
     var sourceFileName by remember { mutableStateOf("") }
+    var sourceModifiedAt by remember { mutableStateOf(0L) }  // ★ 源文件修改时间
     var importMsg by remember { mutableStateOf("") }
     var parsing by remember { mutableStateOf(false) }
     var showNameDialog by remember { mutableStateOf(false) }
@@ -262,7 +263,17 @@ fun ImportScreen(onBack: () -> Unit) {
                 } ?: uri.lastPathSegment ?: "未知题库"
             } catch (_: Exception) { uri.lastPathSegment ?: "未知题库" }
             val cleanName = fileName.substringAfterLast('/').substringAfterLast("%2F").replace("%20", " ")
+            // ★ 读取源文件最后修改时间（SAF DATE_MODIFIED）
+            val sourceModifiedAt = try {
+                context.contentResolver.query(
+                    uri, arrayOf(android.provider.OpenableColumns.DATE_MODIFIED), null, null, null
+                )?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getLong(0) * 1000  // 秒 → 毫秒
+                    else 0L
+                } ?: 0L
+            } catch (_: Exception) { 0L }
             sourceFileName = cleanName
+            sourceModifiedAt = sourceModifiedAt
             parsing = true
             importMsg = ""
             importCoverage = 100
@@ -391,7 +402,7 @@ fun ImportScreen(onBack: () -> Unit) {
             confirmButton = {
                 TextButton(onClick = {
                     val name = bankName.trim().ifEmpty { "未命名题库" }
-                    bank.importBank(name = name, sourceFile = sourceFileName, type = "manual", questions = parsedQuestions!!)
+                    bank.importBank(name = name, sourceFile = sourceFileName, sourceModifiedAt = sourceModifiedAt, type = "manual", questions = parsedQuestions!!)
                     importMsg = "导入成功！\n题库名：$name\n题目数：${parsedQuestions!!.size}"
                     parsedQuestions = null
                     showNameDialog = false
@@ -461,8 +472,31 @@ fun OverviewScreen(onBack: () -> Unit, onOpenBank: (Long) -> Unit) {
                             Column(modifier = Modifier.weight(1f).padding(8.dp)) {
                                 Text(b.name, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222), maxLines = 1, overflow = TextOverflow.Ellipsis)
                                 Spacer(Modifier.height(4.dp))
-                                Text("${bank.questionCount(b.id)} 题 · ${b.formattedTime()}", fontSize = 12.sp, color = Color.Gray)
+                                Text("题目数：${bank.questionCount(b.id)}", fontSize = 11.sp, color = Color.Gray)
+                                Text("导入时间：${b.formattedTime()}", fontSize = 11.sp, color = Color.Gray)
+                                if (b.sourceModifiedAt > 0) Text("源文件修改：${b.formattedSourceTime()}", fontSize = 11.sp, color = Color.Gray)
+                                if (b.sourceFile.isNotEmpty()) Text("源文件：${b.sourceFile}", fontSize = 10.sp, color = Color(0xFFAAAAAA))
                             }
+                            // ★ 分享按钮：调用系统分享 Intent（微信/邮箱/蓝牙等）
+                            TextButton(onClick = {
+                                val qs = bank.loadQuestions(b.id)
+                                val text = buildString {
+                                    appendLine("题库：${b.name}")
+                                    appendLine("题目数：${qs.size}")
+                                    appendLine()
+                                    qs.take(50).forEach { q ->
+                                        appendLine("Q: ${q.stem}")
+                                        if (q.answer.isNotEmpty()) appendLine("答：${q.answer}")
+                                        appendLine()
+                                    }
+                                    if (qs.size > 50) appendLine("... 还有 ${qs.size - 50} 题")
+                                }
+                                val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(android.content.Intent.EXTRA_TEXT, text)
+                                }
+                                context.startActivity(android.content.Intent.createChooser(intent, "分享题库"))
+                            }) { Text("分享", color = Green, fontSize = 12.sp) }
                             TextButton(onClick = { bank.deleteBank(b.id); refreshKey++ }) { Text("删除", color = Red, fontSize = 12.sp) }
                         }
                     }
@@ -535,13 +569,12 @@ fun MenuCard(title: String, subtitle: String, onClick: () -> Unit) {
 
 /** ★ 题库管理横向图标（4 格网格，未开发功能灰色不可点） */
 @Composable
-fun RowScope.BankIcon(emoji: String, title: String, enabled: Boolean, note: String, onClick: () -> Unit) {
+fun RowScope.BankIcon(emoji: String, title: String, enabled: Boolean, onClick: () -> Unit) {
     val bg = if (enabled) Color(0xFFE8F5E9) else Color(0xFFF0F0F0)
     val fg = if (enabled) Color(0xFF222222) else Color(0xFFAAAAAA)
-    val noteColor = if (enabled) Green else Color(0xFFBBBBBB)
     Column(
         modifier = Modifier
-            .weight(1f)                // ★ 需要在 RowScope 中
+            .weight(1f)
             .padding(horizontal = 4.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(bg)
@@ -549,10 +582,8 @@ fun RowScope.BankIcon(emoji: String, title: String, enabled: Boolean, note: Stri
             .padding(vertical = 14.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(emoji, fontSize = 26.sp)
+        Text(emoji, fontSize = 28.sp)
         Spacer(Modifier.height(6.dp))
-        Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = fg)
-        Spacer(Modifier.height(2.dp))
-        Text(note, fontSize = 9.sp, color = noteColor)
+        // ★ 注释已删除（去掉的还有 title 文字）
     }
 }

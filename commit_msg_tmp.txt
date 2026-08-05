@@ -1,1 +1,1 @@
-修复 parseXls sourceChars 作用域：提到 sheet 循环外
+修复 BankIcon 编译错误：weight() 必须在 RowScope 中

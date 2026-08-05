@@ -32,9 +32,9 @@ object Importer {
         val parsedLength: Int = 0,         // ★ 解析后题目总字数
         val error: String? = null          // 非 null = 解析失败
     ) {
-        /** ★ 覆盖率：解析字数 / 源字数 × 100（0-100） */
+        /** ★ 覆盖率：解析字数 / 源字数 × 100 */
         fun coverage(): Int =
-            if (sourceLength > 0) (parsedLength.toDouble() / sourceLength * 100).toInt().coerceIn(0, 100)
+            if (sourceLength > 0) ((parsedLength.toDouble() / sourceLength * 100).toInt())
             else 100
 
         /** ★ 覆盖率是否低于阈值（默认 60，pdf 用 55） */
