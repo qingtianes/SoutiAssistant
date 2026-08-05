@@ -34,13 +34,22 @@ object Importer {
     // ============ 入口：按扩展名分发 ============
 
     fun parse(context: Context, uri: Uri, fileName: String): ParseResult {
-        val ext = fileName.substringAfterLast('.', "").lowercase()
-        return when (ext) {
-            "txt" -> parseTxt(context.contentResolver.openInputStream(uri))
-            "docx" -> parseDocx(context.contentResolver.openInputStream(uri))
-            "pdf" -> parsePdf(context.contentResolver.openInputStream(uri))
-            "xls", "xlsx" -> ParseResult(emptyList(), error = "Excel 格式请在电脑端用转换工具转成 txt 后导入（支持 .txt/.docx/.pdf）")
-            else -> ParseResult(emptyList(), error = "不支持的文件格式：.$ext（支持 .txt/.docx/.pdf）")
+        // ★ 用 MIME 类型判断（Android 17 SAF 可能隐藏文件扩展名）
+        val mime = context.contentResolver.getType(uri) ?: ""
+        val fn = fileName.lowercase()
+        return when {
+            mime == "application/pdf" || mime.endsWith("/pdf") || fn.endsWith(".pdf")
+                -> parsePdf(context.contentResolver.openInputStream(uri))
+            mime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                || mime.endsWith("/openxmlformats-officedocument.wordprocessingml.document")
+                || fn.endsWith(".docx")
+                -> parseDocx(context.contentResolver.openInputStream(uri))
+            mime.startsWith("text/") || mime == "application/octet-stream" || mime.isEmpty()
+                || fn.endsWith(".txt")
+                -> parseTxt(context.contentResolver.openInputStream(uri))
+            fn.endsWith(".xls") || fn.endsWith(".xlsx")
+                -> ParseResult(emptyList(), error = "Excel 格式请在电脑端用转换工具转成 txt 后导入（支持 .txt/.docx/.pdf）")
+            else -> ParseResult(emptyList(), error = "不支持的文件格式：$fileName（支持 .txt/.docx/.pdf）")
         }
     }
 
