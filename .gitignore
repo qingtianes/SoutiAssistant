@@ -1,0 +1,24 @@
+# ── Android 构建产物 ──
+build/
+app/build/
+.gradle/
+.gradle_build/
+*.apk
+*.aab
+
+# ── 本机环境（绝不上传！）──
+local.properties
+
+# ── IDE 配置 ──
+.idea/
+*.iml
+.DS_Store
+captures/
+
+# ── 缓存与日志 ──
+*.log
+.kotlin/
+
+# ── 签名文件（安全！）──
+*.jks
+*.keystore

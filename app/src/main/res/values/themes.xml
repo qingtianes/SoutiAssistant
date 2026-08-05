@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.SoutiAssistant" parent="android:Theme.Material.Light.NoActionBar" />
+    <!-- 透明 Activity 主题（OCR 持续模式用） -->
+    <style name="Theme.SoutiAssistant.Transparent" parent="Theme.SoutiAssistant">
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowActionBar">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+</resources>

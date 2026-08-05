@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<full-backup-content>
+    <!-- 记账数据存在 SharedPreferences 里，允许备份 -->
+    <include domain="sharedpref" path="jizhangben.xml" />
+</full-backup-content>

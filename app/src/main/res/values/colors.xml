@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- APP 图标背景色（绿色系，记账主题） -->
+    <color name="ic_launcher_background">#1D9E75</color>
+</resources>
