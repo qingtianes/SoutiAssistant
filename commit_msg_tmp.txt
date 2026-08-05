@@ -1,1 +1,8 @@
-修复 BankIcon 编译错误：weight() 必须在 RowScope 中
+题库总览增强 + 主页图标注释删除 + 覆盖率修
+
+1. 主页图标注释删除（进页面已有说明）
+2. xls 覆盖率计算修复（不再限制 100%）
+3. Bank 加 sourceModifiedAt 字段（保存源文件修改时间）
+4. ImportScreen 读取 SAF DATE_MODIFIED 传给 Bank
+5. OverviewScreen 时间信息分两行（导入时间 + 源文件修改）
+6. OverviewScreen 加分享按钮（系统 ACTION_SEND Intent，调起微信/邮箱/蓝牙等）
