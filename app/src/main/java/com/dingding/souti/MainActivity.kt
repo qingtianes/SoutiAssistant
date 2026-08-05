@@ -535,13 +535,13 @@ fun MenuCard(title: String, subtitle: String, onClick: () -> Unit) {
 
 /** ★ 题库管理横向图标（4 格网格，未开发功能灰色不可点） */
 @Composable
-fun BankIcon(emoji: String, title: String, enabled: Boolean, note: String, onClick: () -> Unit) {
+fun RowScope.BankIcon(emoji: String, title: String, enabled: Boolean, note: String, onClick: () -> Unit) {
     val bg = if (enabled) Color(0xFFE8F5E9) else Color(0xFFF0F0F0)
     val fg = if (enabled) Color(0xFF222222) else Color(0xFFAAAAAA)
     val noteColor = if (enabled) Green else Color(0xFFBBBBBB)
     Column(
         modifier = Modifier
-            .weight(1f)
+            .weight(1f)                // ★ 需要在 RowScope 中
             .padding(horizontal = 4.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(bg)

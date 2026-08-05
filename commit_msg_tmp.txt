@@ -1,1 +1,1 @@
-修复 PDF 文件名解析：用 MIME 类型判断
+修复 parseXls sourceChars 作用域：提到 sheet 循环外
