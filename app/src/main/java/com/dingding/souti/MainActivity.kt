@@ -263,17 +263,17 @@ fun ImportScreen(onBack: () -> Unit) {
                 } ?: uri.lastPathSegment ?: "未知题库"
             } catch (_: Exception) { uri.lastPathSegment ?: "未知题库" }
             val cleanName = fileName.substringAfterLast('/').substringAfterLast("%2F").replace("%20", " ")
-            // ★ 读取源文件最后修改时间（SAF DATE_MODIFIED）
+            // ★ 读取源文件最后修改时间（DocumentProvider 标准字段 "date_modified"，兼容所有 API）
             val sourceModifiedAt = try {
                 context.contentResolver.query(
-                    uri, arrayOf(android.provider.OpenableColumns.DATE_MODIFIED), null, null, null
+                    uri, arrayOf("date_modified"), null, null, null
                 )?.use { cursor ->
                     if (cursor.moveToFirst()) cursor.getLong(0) * 1000  // 秒 → 毫秒
                     else 0L
                 } ?: 0L
             } catch (_: Exception) { 0L }
             sourceFileName = cleanName
-            sourceModifiedAt = sourceModifiedAt
+            this.sourceModifiedAt = sourceModifiedAt  // ★ state 赋值（去掉同名 val 重复）
             parsing = true
             importMsg = ""
             importCoverage = 100
