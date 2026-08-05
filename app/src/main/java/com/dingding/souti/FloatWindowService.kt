@@ -130,10 +130,9 @@ class FloatWindowService : Service() {
         val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         root = r
 
-        // ★ 浮窗尺寸（用户重新设计：4 个 section 高度合计）
-        // taskBar 32dp + 绿框 150dp + OCR 状态栏 24dp + OCR 结果 200dp + 余量 = 420dp
+        // ★ 浮窗尺寸：固定 dp(360) 宽 × dp(560) 高（足够大装下所有 section，让 matchScroll weight=1 内部滚动）
         val p = WindowManager.LayoutParams(
-            dp(360), dp(420),
+            dp(360), dp(560),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -166,16 +165,39 @@ class FloatWindowService : Service() {
             )
         }
 
-        // ★ 内层 stack：宽度 MATCH_PARENT（必须用 match_parent，让所有 match_parent section 都跟着 outer 全宽）
+        // ★ 内层 stack：高度 MATCH_PARENT（匹配 outer 固定 800dp），让固定 section 占固定空间，matchScroll 用 weight=1 占剩余
         val stack = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.WRAP_CONTENT
+                FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
 
-        // ★ 0) OCR 原文识别行（最顶，紧贴浮窗上沿）
+        // ★ 4) 匹配结果区（最顶：用户要求 4 在 1 上面）
+        val matchContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            setBackgroundColor(Color.parseColor("#22000000"))
+        }
+        val matchScroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = true
+            scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
+            addView(matchContainer)
+            // ★ 高度 = 0, weight = 1f：占满 stack 剩余空间（stack 高 = 800dp 固定）
+            //    内容超出时 ScrollView 内部滚动，不挤压下方 taskBar + recognizeArea
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
+        }
+        stack.addView(matchScroll)
+        ocrResultContainer = matchContainer
+        ocrResultScroll = matchScroll
+
+        // ★ 0) OCR 原文识别行（匹配结果下方）
         val ocrStatusContainer = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
@@ -322,27 +344,6 @@ class FloatWindowService : Service() {
         recognizeArea.addView(redBorder)
         redBorderView = redBorder
         stack.addView(recognizeArea)
-
-        // 4) OCR 结果区（只放匹配卡片，紧贴绿框下方，宽 = MATCH_PARENT）
-        val matchContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            setBackgroundColor(Color.parseColor("#22000000"))
-        }
-        val matchScroll = ScrollView(this).apply {
-            isVerticalScrollBarEnabled = true
-            scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
-            addView(matchContainer)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(200)
-            )
-        }
-        stack.addView(matchScroll)
-        ocrResultContainer = matchContainer
-        ocrResultScroll = matchScroll
 
         outer.addView(stack)
         root.addView(outer)
@@ -977,7 +978,7 @@ class FloatWindowService : Service() {
                 setPadding(dp(4), dp(2), dp(4), dp(4))
             })
         }
-        // ★ 匹配结果显示（只放匹配卡片）
+        // ★ 匹配结果显示（反序：最佳匹配最后 addView = 排在 LinearLayout 最底部 = 用户视线最近位置）
         if (results.isEmpty()) {
             resultContainer.addView(TextView(this).apply {
                 text = "未匹配到题库题目"
@@ -987,12 +988,14 @@ class FloatWindowService : Service() {
             })
             return
         }
-// 显示最佳候选（前 5 条）
-        results.forEachIndexed { idx, sr ->
-            val isBest = idx == 0
-            val card = buildResultCard(sr, idx + 1, isBest)
-            resultContainer.addView(card)
+        // ★ 先加次匹配（idx>=1），最后加最佳匹配（idx=0）
+        // 结果: matchContainer 顶部 = 较差的, 底部 = 最佳（最显眼位置）
+        results.drop(1).forEachIndexed { idx, sr ->
+            val displayIdx = idx + 1  // #2, #3, ...
+            resultContainer.addView(buildResultCard(sr, displayIdx, isBest = false))
         }
+        // 最佳匹配最后 addView（最底部）
+        resultContainer.addView(buildResultCard(results[0], 0, isBest = true))
     }
 
     /** 单个结果卡片（最佳/次匹配） */
