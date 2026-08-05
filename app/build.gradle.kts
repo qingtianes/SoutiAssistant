@@ -11,9 +11,10 @@ android {
     defaultConfig {
         applicationId = "com.dingding.souti"
         minSdk = 26
-        // ★ targetSdk 34 = Android 14 规则（宽松）：mediaProjection FGS 检查不强制 runtime grant
-        // targetSdk 35 在 Android 15+ 会严格要求所有 FGS type 权限在启动时已授权，冷启动模拟器后丢授权就失败
-        targetSdk = 34
+        // ★ targetSdk 33 = Android 13 规则：完全不检查 MEDIA_PROJECTION runtime grant
+        // targetSdk 34+ 会要求 MEDIA_PROJECTION 已被 runtime 授权才能启动 FGS mediaProjection
+        // 模拟器冷启动后 runtime grants 丢失 → 必须先手动授权过 mediaProjection 才能启动服务
+        targetSdk = 33
         versionCode = 1
         versionName = "1.0"
     }
