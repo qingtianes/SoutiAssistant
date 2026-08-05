@@ -207,9 +207,13 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
         MenuCard("AI 搜题", "在线大模型搜题（待开发）") {}
         Spacer(Modifier.height(16.dp))
         SectionTitle("题库管理")
-        MenuCard("AI 导入", "喂文档，AI 自动解析题干/选项/答案（待开发）") {}
-        MenuCard("手动导入", "选 .txt 文件，自定义解析") { onNavigate("import") }
-        MenuCard("题库总览", "查看已导入题库") { onNavigate("overview") }
+        // ★ 横向 4 图标网格（智能导入 / 题库总览 / 公共题库 / 远程导入）
+        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+            BankIcon("📁", "智能导入", enabled = true, note = "txt/docx/pdf/xls") { onNavigate("import") }
+            BankIcon("📚", "题库总览", enabled = true, note = "查看已导入") { onNavigate("overview") }
+            BankIcon("🌐", "公共题库", enabled = false, note = "在线通用题库") {}
+            BankIcon("🔗", "远程导入", enabled = false, note = "URL/IP 导入") {}
+        }
         Spacer(Modifier.height(16.dp))
         SectionTitle("设置")
         MenuCard("权限管理", "悬浮窗 / 截屏 / 摄像头 / 通知") {}
@@ -243,6 +247,10 @@ fun ImportScreen(onBack: () -> Unit) {
     var parsing by remember { mutableStateOf(false) }
     var showNameDialog by remember { mutableStateOf(false) }
     var bankName by remember { mutableStateOf("") }
+    // ★ 字数验证状态
+    var importCoverage by remember { mutableStateOf(100) }
+    var importSourceLen by remember { mutableStateOf(0) }
+    var importParsedLen by remember { mutableStateOf(0) }
 
     val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
@@ -257,6 +265,9 @@ fun ImportScreen(onBack: () -> Unit) {
             sourceFileName = cleanName
             parsing = true
             importMsg = ""
+            importCoverage = 100
+            importSourceLen = 0
+            importParsedLen = 0
             // 后台线程解析（大文件不阻塞 UI）
             Thread {
                 val result = try {
@@ -283,6 +294,16 @@ fun ImportScreen(onBack: () -> Unit) {
                             )
                         }
                         parsedQuestions = questions
+                        // ★ 字数验证：覆盖率低时直接拒绝导入
+                        val cov = result.coverage()
+                        if (result.sourceLength > 0 && cov < 60) {
+                            parsedQuestions = null
+                            importMsg = "导入验证失败：字数覆盖率仅 $cov%\n源文件 ${result.sourceLength} 字，解析出 ${result.parsedLength} 字\n大量题目可能未被识别，请人工检查源文件后重新导入。"
+                            return@runOnUiThreadCompat
+                        }
+                        importCoverage = cov
+                        importSourceLen = result.sourceLength
+                        importParsedLen = result.parsedLength
                         val defaultName = cleanName.substringBeforeLast(".")
                         bankName = if (defaultName.isNotBlank() && defaultName != cleanName) defaultName else cleanName
                         showNameDialog = true
@@ -342,13 +363,36 @@ fun ImportScreen(onBack: () -> Unit) {
                     OutlinedTextField(value = bankName, onValueChange = { bankName = it }, singleLine = true, label = { Text("题库名") })
                     Spacer(Modifier.height(8.dp))
                     Text("已识别 ${parsedQuestions!!.size} 道题", fontSize = 12.sp, color = Green)
+                    // ★ 字数验证显示
+                    if (importSourceLen > 0) {
+                        Spacer(Modifier.height(6.dp))
+                        val covColor = when {
+                            importCoverage >= 90 -> Green
+                            importCoverage >= 70 -> Color(0xFFF57C00) // 橙
+                            else -> Red
+                        }
+                        Text(
+                            "字数对比：源 ${importSourceLen} / 解析 ${importParsedLen}（覆盖率 ${importCoverage}%）",
+                            fontSize = 11.sp,
+                            color = covColor
+                        )
+                        if (importCoverage < 90) {
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                if (importCoverage >= 70) "⚠️ 少量差异（可能是章节标题/格式被忽略，可接受）"
+                                else "⚠️ 字数差距较大！可能有题目未被识别，建议检查源文件",
+                                fontSize = 10.sp,
+                                color = if (importCoverage >= 70) Color(0xFFF57C00) else Red
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     val name = bankName.trim().ifEmpty { "未命名题库" }
                     bank.importBank(name = name, sourceFile = sourceFileName, type = "manual", questions = parsedQuestions!!)
-                    importMsg = "导入成功！\n题库名：$name\n题目数：${parsedQuestions!!.size}\n（源文件 ${if (sourceFileName.endsWith(".xls") || sourceFileName.endsWith(".xlsx")) "请用电脑工具转换" else "已自动转换"}）"
+                    importMsg = "导入成功！\n题库名：$name\n题目数：${parsedQuestions!!.size}"
                     parsedQuestions = null
                     showNameDialog = false
                 }) { Text("确定导入", color = Green, fontWeight = FontWeight.Bold) }
@@ -486,5 +530,29 @@ fun MenuCard(title: String, subtitle: String, onClick: () -> Unit) {
             }
             Text("›", fontSize = 24.sp, color = Color.Gray)
         }
+    }
+}
+
+/** ★ 题库管理横向图标（4 格网格，未开发功能灰色不可点） */
+@Composable
+fun BankIcon(emoji: String, title: String, enabled: Boolean, note: String, onClick: () -> Unit) {
+    val bg = if (enabled) Color(0xFFE8F5E9) else Color(0xFFF0F0F0)
+    val fg = if (enabled) Color(0xFF222222) else Color(0xFFAAAAAA)
+    val noteColor = if (enabled) Green else Color(0xFFBBBBBB)
+    Column(
+        modifier = Modifier
+            .weight(1f)
+            .padding(horizontal = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(bg)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Text(emoji, fontSize = 26.sp)
+        Spacer(Modifier.height(6.dp))
+        Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = fg)
+        Spacer(Modifier.height(2.dp))
+        Text(note, fontSize = 9.sp, color = noteColor)
     }
 }

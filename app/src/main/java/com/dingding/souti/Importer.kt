@@ -28,8 +28,18 @@ object Importer {
         val hasNumbered: Boolean = false,
         val noNumberWithOption: Boolean = false,
         val blankSeparated: Boolean = false,
+        val sourceLength: Int = 0,         // ★ 源文件内容字数（验证覆盖率用）
+        val parsedLength: Int = 0,         // ★ 解析后题目总字数
         val error: String? = null          // 非 null = 解析失败
-    )
+    ) {
+        /** ★ 覆盖率：解析字数 / 源字数 × 100（0-100） */
+        fun coverage(): Int =
+            if (sourceLength > 0) (parsedLength.toDouble() / sourceLength * 100).toInt().coerceIn(0, 100)
+            else 100
+
+        /** ★ 覆盖率是否低于阈值（默认 60，pdf 用 55） */
+        fun lowCoverage(threshold: Int = 60): Boolean = coverage() < threshold
+    }
 
     // ============ 入口：按扩展名分发 ============
 
@@ -60,8 +70,13 @@ object Importer {
         val text = input.bufferedReader().use { it.readText() }
         // 兼容 BOM
         val cleaned = text.removePrefix("\uFEFF")
+        val sourceLen = cleaned.replace(Regex("\\s+"), "").length
         val lines = cleaned.split("\n").map { it.trimEnd() }
-        return chunkLines(lines)
+        val result = chunkLines(lines)
+        return result.copy(
+            sourceLength = sourceLen,
+            parsedLength = result.chunks.joinToString("").replace(Regex("\\s+"), "").length
+        )
     }
 
     /** docx：解 zip 提取段落文本 */
@@ -72,7 +87,12 @@ object Importer {
             if (paragraphs.isEmpty()) {
                 ParseResult(emptyList(), error = "docx 未提取到文本（可能已损坏或加密）")
             } else {
-                chunkLines(paragraphs)
+                val sourceLen = paragraphs.joinToString("").replace(Regex("\\s+"), "").length
+                val result = chunkLines(paragraphs)
+                result.copy(
+                    sourceLength = sourceLen,
+                    parsedLength = result.chunks.joinToString("").replace(Regex("\\s+"), "").length
+                )
             }
         } catch (e: Exception) {
             ParseResult(emptyList(), error = "docx 解析失败：${e.message}")
@@ -90,8 +110,13 @@ object Importer {
             if (text.isBlank()) {
                 ParseResult(emptyList(), error = "扫描版 PDF（无文本层），无法提取文字，请使用文字版 PDF")
             } else {
+                val sourceLen = text.replace(Regex("\\s+"), "").length
                 val lines = text.split("\n").map { it.trim() }.filter { it.isNotBlank() }
-                chunkLines(lines)
+                val result = chunkLines(lines)
+                result.copy(
+                    sourceLength = sourceLen,
+                    parsedLength = result.chunks.joinToString("").replace(Regex("\\s+"), "").length
+                )
             }
         } catch (e: Exception) {
             ParseResult(emptyList(), error = "PDF 解析失败：${e.message}")
@@ -133,12 +158,19 @@ object Importer {
                 val optCol = cols["可选项"]
                 val ansCol = cols["答案"] ?: cols["正确答案"]
 
+                var sourceChars = 0
                 for (r in (headerRow + 1) until sh.rows) {
                     val stem = stemCol?.let { sh.getCell(it, r)?.contents?.trim() } ?: ""
                     if (stem.isEmpty() || stem == "题目内容" || stem == "题干") continue
                     val key = stem.take(40)
                     if (seen.contains(key)) continue
                     seen.add(key)
+
+                    // ★ 源字数：题干 + 选项 + 答案 的去空白长度
+                    var cellText = stem
+                    if (optCol != null) cellText += sh.getCell(optCol, r)?.contents ?: ""
+                    if (ansCol != null) cellText += sh.getCell(ansCol, r)?.contents ?: ""
+                    sourceChars += cellText.replace(Regex("\\s+"), "").length
 
                     // 题型
                     val type = typeCol?.let { sh.getCell(it, r)?.contents?.trim() } ?: ""
@@ -184,11 +216,14 @@ object Importer {
                 ParseResult(emptyList(), error = "xls 文件无有效题目（可能为空或表头格式不对）")
             } else {
                 // xls 是三列模式 → hasNumbered=true（题目内有序号）
+                // ★ 源字数 = 所有单元格内容总和（不含表头）
                 ParseResult(
                     chunks = chunks,
                     hasNumbered = true,
                     noNumberWithOption = false,
-                    blankSeparated = false
+                    blankSeparated = false,
+                    sourceLength = sourceChars,
+                    parsedLength = chunks.joinToString("").replace(Regex("\\s+"), "").length
                 )
             }
         } catch (e: Exception) {
