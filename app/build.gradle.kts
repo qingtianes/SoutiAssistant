@@ -11,7 +11,9 @@ android {
     defaultConfig {
         applicationId = "com.dingding.souti"
         minSdk = 26
-        targetSdk = 35
+        // ★ targetSdk 34 = Android 14 规则（宽松）：mediaProjection FGS 检查不强制 runtime grant
+        // targetSdk 35 在 Android 15+ 会严格要求所有 FGS type 权限在启动时已授权，冷启动模拟器后丢授权就失败
+        targetSdk = 34
         versionCode = 1
         versionName = "1.0"
     }
