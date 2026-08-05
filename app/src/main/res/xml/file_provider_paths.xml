@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- 分享题库：导出到 cacheDir/shared_banks/ 下面的 txt 文件 -->
+    <cache-path name="shared_banks" path="shared_banks/" />
+</paths>

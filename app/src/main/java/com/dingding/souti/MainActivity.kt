@@ -138,12 +138,27 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
     val context = LocalContext.current
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var floatRunning by remember { mutableStateOf(false) }
-    // ★ 轮询 Service 状态（FloatWindowService 启动/停止时写 SharedPreferences）
+    var floatError by remember { mutableStateOf("") }  // ★ Service 启动失败信息
+    // ★ 轮询 Service 真实状态（用 ActivityManager 校验自家服务，Android 14+ 允许）
     LaunchedEffect(Unit) {
         val prefs = context.getSharedPreferences("souti_state", android.content.Context.MODE_PRIVATE)
         while (true) {
-            floatRunning = prefs.getBoolean("service_running", false)
-            kotlinx.coroutines.delay(500)  // 500ms 轮询
+            // Android 14+ 允许自家服务的 getRunningServices（被禁的只是其他应用）
+            val actuallyRunning = isServiceRunning(context, FloatWindowService::class.java)
+            // 同步真实状态到 prefs（防止进程 kill 后 prefs 漂移）
+            val prefsRunning = prefs.getBoolean("service_running", false)
+            if (actuallyRunning != prefsRunning) {
+                prefs.edit().putBoolean("service_running", actuallyRunning).apply()
+            }
+            if (floatRunning != actuallyRunning) {
+                floatRunning = actuallyRunning
+            }
+            // 同步错误信息（Service 启动成功时它会自动清空）
+            val err = prefs.getString("last_error", "") ?: ""
+            if (err != floatError) {
+                floatError = err
+            }
+            kotlinx.coroutines.delay(500)
         }
     }
     var activeCount by remember { mutableStateOf(0) }
@@ -179,17 +194,25 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
                     text = if (activeCount == 0) "⚠ 未勾选任何题库（去题库总览勾选后再启动）" else "✓ 已勾选 $activeCount 个题库用于搜题",
                     fontSize = 11.sp, color = if (activeCount == 0) Red else Green
                 )
+                // ★ Service 启动失败时显示错误
+                if (floatError.isNotEmpty()) {
+                    Spacer(Modifier.height(2.dp))
+                    Text("⚠ 启动失败：$floatError", fontSize = 10.sp, color = Red)
+                }
                 Spacer(Modifier.height(12.dp))
                 Button(
                     onClick = {
                         when {
                             !hasOverlayPermission -> context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
                             floatRunning -> {
-                                // ★ 完全关闭服务：stopService + 清 OcrBridge（下次启动需重新授权）
-                                context.stopService(Intent(context, FloatWindowService::class.java))
-                                OcrBridge.mediaProjection = null
-                                floatRunning = false
-                            }
+                                // ★ 完全关闭服务：发 ACTION_STOP_SELF（Android 14+ 前台服务必须先 stopForeground）
+                                val stopIntent = Intent(context, FloatWindowService::class.java).apply {
+                    action = FloatWindowService.ACTION_STOP_SELF
+                }
+                context.startService(stopIntent)
+                OcrBridge.mediaProjection = null
+                floatRunning = false
+            }
                             else -> {
                                 // ★ 启动服务（首次或完全关闭后启动）
                                 context.startForegroundService(Intent(context, FloatWindowService::class.java))
@@ -264,7 +287,8 @@ fun ImportScreen(onBack: () -> Unit) {
             } catch (_: Exception) { uri.lastPathSegment ?: "未知题库" }
             val cleanName = fileName.substringAfterLast('/').substringAfterLast("%2F").replace("%20", " ")
             // ★ 读取源文件最后修改时间（DocumentProvider 标准字段 "date_modified"，兼容所有 API）
-            val sourceModifiedAt = try {
+            // 直接给外层 state 赋值（不要局部 val 同名覆盖）
+            sourceModifiedAt = try {
                 context.contentResolver.query(
                     uri, arrayOf("date_modified"), null, null, null
                 )?.use { cursor ->
@@ -273,7 +297,6 @@ fun ImportScreen(onBack: () -> Unit) {
                 } ?: 0L
             } catch (_: Exception) { 0L }
             sourceFileName = cleanName
-            this.sourceModifiedAt = sourceModifiedAt  // ★ state 赋值（去掉同名 val 重复）
             parsing = true
             importMsg = ""
             importCoverage = 100
@@ -413,6 +436,18 @@ fun ImportScreen(onBack: () -> Unit) {
     }
 }
 
+/** 主动校验 Service 真实状态（Android 14+ 限制 getRunningServices，必须 try-catch） */
+private fun isServiceRunning(context: android.content.Context, serviceClass: Class<*>): Boolean {
+    return try {
+        val manager = context.getSystemService(android.content.Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        manager?.getRunningServices(Int.MAX_VALUE)
+            ?.any { it.service.className == serviceClass.name } ?: false
+    } catch (e: Throwable) {
+        // Android 14+ 普通应用不能 getRunningServices（SecurityException），返回 false
+        false
+    }
+}
+
 /** 在 Compose 外跑 UI 线程（导入解析用的 Thread 里） */
 private fun runOnUiThreadCompat(context: android.content.Context, block: () -> Unit) {
     if (context is android.app.Activity) {
@@ -474,28 +509,40 @@ fun OverviewScreen(onBack: () -> Unit, onOpenBank: (Long) -> Unit) {
                                 Spacer(Modifier.height(4.dp))
                                 Text("题目数：${bank.questionCount(b.id)}", fontSize = 11.sp, color = Color.Gray)
                                 Text("导入时间：${b.formattedTime()}", fontSize = 11.sp, color = Color.Gray)
-                                if (b.sourceModifiedAt > 0) Text("源文件修改：${b.formattedSourceTime()}", fontSize = 11.sp, color = Color.Gray)
                                 if (b.sourceFile.isNotEmpty()) Text("源文件：${b.sourceFile}", fontSize = 10.sp, color = Color(0xFFAAAAAA))
                             }
                             // ★ 分享按钮：调用系统分享 Intent（微信/邮箱/蓝牙等）
                             TextButton(onClick = {
+                                // ★ 分享：导出为暂时 txt 文件给 FileProvider，系统选择面板选应用
                                 val qs = bank.loadQuestions(b.id)
-                                val text = buildString {
-                                    appendLine("题库：${b.name}")
-                                    appendLine("题目数：${qs.size}")
-                                    appendLine()
-                                    qs.take(50).forEach { q ->
-                                        appendLine("Q: ${q.stem}")
-                                        if (q.answer.isNotEmpty()) appendLine("答：${q.answer}")
-                                        appendLine()
+                                val sb = StringBuilder()
+                                sb.appendLine("搜题助手 - 题库：${b.name}")
+                                sb.appendLine("题目数：${qs.size}")
+                                sb.appendLine("---")
+                                qs.forEach { q ->
+                                    sb.appendLine(q.stem.trim())
+                                    q.options.forEachIndexed { i, opt ->
+                                        sb.appendLine("${('A' + i)}. $opt")
                                     }
-                                    if (qs.size > 50) appendLine("... 还有 ${qs.size - 50} 题")
+                                    if (q.answer.isNotEmpty()) sb.appendLine("答案:${q.answer}")
+                                    sb.appendLine("")
                                 }
+                                val cacheDir = java.io.File(context.cacheDir, "shared_banks")
+                                cacheDir.mkdirs()
+                                val safeName = b.name.replace(Regex("[^\\w\\u4e00-\\u9fff]"), "_")
+                                val outFile = java.io.File(cacheDir, "${safeName}.txt")
+                                outFile.writeText(sb.toString(), Charsets.UTF_8)
+                                val uri = androidx.core.content.FileProvider.getUriForFile(
+                                    context,
+                                    "${context.packageName}.fileprovider",
+                                    outFile
+                                )
                                 val intent = android.content.Intent(android.content.Intent.ACTION_SEND).apply {
                                     type = "text/plain"
-                                    putExtra(android.content.Intent.EXTRA_TEXT, text)
+                                    putExtra(android.content.Intent.EXTRA_STREAM, uri)
+                                    addFlags(android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                 }
-                                context.startActivity(android.content.Intent.createChooser(intent, "分享题库"))
+                                context.startActivity(android.content.Intent.createChooser(intent, "分享题库（txt文件）"))
                             }) { Text("分享", color = Green, fontSize = 12.sp) }
                             TextButton(onClick = { bank.deleteBank(b.id); refreshKey++ }) { Text("删除", color = Red, fontSize = 12.sp) }
                         }
@@ -583,7 +630,7 @@ fun RowScope.BankIcon(emoji: String, title: String, enabled: Boolean, onClick: (
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(emoji, fontSize = 28.sp)
-        Spacer(Modifier.height(6.dp))
-        // ★ 注释已删除（去掉的还有 title 文字）
+        Spacer(Modifier.height(4.dp))
+        Text(title, fontSize = 12.sp, fontWeight = FontWeight.Bold, color = fg)
     }
 }

@@ -56,6 +56,8 @@ class FloatWindowService : Service() {
         const val ACTION_TOGGLE_DEBUG = "com.dingding.souti.TOGGLE_DEBUG"
         /** ★ 重新显示浮窗（Service 已在跑，只是 root 被隐藏） */
         const val ACTION_SHOW_WINDOW = "com.dingding.souti.SHOW_WINDOW"
+        /** ★ 内部停止（Android 14+ 前台服务必须用 stopForeground 才能真的停） */
+        const val ACTION_STOP_SELF = "com.dingding.souti.STOP_SELF"
         /** ★ 绿框 View 的稳定 ID（用 getLocationOnScreen 获取真实屏幕坐标） */
         private const val R_ID_RECOGNIZE = 0x7F010001
     }
@@ -63,26 +65,43 @@ class FloatWindowService : Service() {
     private lateinit var windowManager: WindowManager
     private var root: View? = null
     private var params: WindowManager.LayoutParams? = null
-    /** ★ 是否最小化（浮窗缩成 40dp 小条） */
+    /** ★ 最小化圆点窗口（独立 40x40 小窗口，最可靠方案） */
+    private var minimizedDot: View? = null
+    private var minimizedDotParams: WindowManager.LayoutParams? = null
     private var isMinimized: Boolean = false
     private val bank by lazy { QuestionBank(this) }
 
     override fun onCreate() {
         super.onCreate()
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        ocrRecognizeHeight = dp(150)  // 默认 150dp（约 1 道题高）
-        // ★ 写 SharedPreferences 让主页轮询到
-        getSharedPreferences("souti_state", android.content.Context.MODE_PRIVATE)
-            .edit().putBoolean("service_running", true).apply()
-        createNotificationChannel()
-        // ★ Android 14 强制要求：MediaProjection 需要指定 foregroundServiceType=mediaProjection
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(NOTIFICATION_ID, createNotification(),
-                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
-        } else {
-            startForeground(NOTIFICATION_ID, createNotification())
+        try {
+            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            ocrRecognizeHeight = dp(150)  // 默认 150dp（约 1 道题高）
+            // ★ 启动成功：清空之前的错误信息（防止上次失败残留）
+            getSharedPreferences("souti_state", android.content.Context.MODE_PRIVATE)
+                .edit().putBoolean("service_running", true)
+                .putString("last_error", "")
+                .apply()
+            createNotificationChannel()
+            // ★ OCR 截屏必须用 mediaProjection 类型（之前 specialUse 抛 SecurityException）
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(NOTIFICATION_ID, createNotification(),
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
+            } else {
+                startForeground(NOTIFICATION_ID, createNotification())
+            }
+            showFloatWindow()
+        } catch (e: Throwable) {
+            Log.e("FloatWindow", "Service 启动失败", e)
+            // ★ 崩溃时清理 prefs + 写错误信息到 prefs，让主页能显示
+            try {
+                getSharedPreferences("souti_state", android.content.Context.MODE_PRIVATE)
+                    .edit().putBoolean("service_running", false)
+                    .putString("last_error", e.message ?: e.javaClass.simpleName)
+                    .apply()
+            } catch (_: Throwable) {}
+            stopSelf()
+            return
         }
-        showFloatWindow()
     }
 
     private fun createNotificationChannel() {
@@ -183,9 +202,9 @@ class FloatWindowService : Service() {
         }
         manualBtn.layoutParams = manualLp
         topBar.addView(manualBtn)
-        // 弹性空间
+        // ★ 左侧弹性空间（让授权按钮居中）
         topBar.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)  // 弹性 View，把授权按钮推到右侧
+            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
         })
         // 授权/扫描按钮（混合态：未授权=授权，已授权未扫描=开始，已扫描=暂停）
         val topBtn = TextView(this).apply {
@@ -203,34 +222,30 @@ class FloatWindowService : Service() {
         }
         ocrTopSwitch = topBtn
         topBar.addView(topBtn)
-        // — 按钮：最小化/恢复切换（最小化时浮窗变成 40dp 高的小条，可拖动）
+        // — 按钮：最小化（隐藏完整浮窗 → 显示独立 40x40 圆点窗口）
         val closeBtn = TextView(this).apply {
             text = "—"  // 初始为最小化（短横线）
-            setTextColor(Color.parseColor("#E24B4A"))
-            textSize = 18f
+            setTextColor(Color.WHITE)  // 白字配绿底
+            textSize = 16f
             setTypeface(typeface, Typeface.BOLD)
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(dp(2), 0, dp(2), 0)
+            setBackgroundColor(Color.parseColor("#1D9E75"))  // ★ 绿底圆点
+            gravity = Gravity.CENTER  // ★ 文字居中
+            setPadding(0, 0, 0, 0)
             setOnClickListener {
-                // ★ 切换最小化/恢复
-                val p = params ?: return@setOnClickListener
-                val r = this@FloatWindowService.root ?: return@setOnClickListener
-                if (this@FloatWindowService.isMinimized) {
-                    // 恢复完整浮窗
-                    p.height = dp(520)
-                    try { windowManager.updateViewLayout(r, p) } catch (_: Exception) {}
-                    this@FloatWindowService.isMinimized = false
-                    text = "—"
-                } else {
-                    // 最小化：浮窗缩到 40dp 高（只显示顶栏）
-                    p.height = dp(40)
-                    try { windowManager.updateViewLayout(r, p) } catch (_: Exception) {}
-                    this@FloatWindowService.isMinimized = true
-                    text = "+"  // 变成"+"提示可展开
-                }
+                this@FloatWindowService.minimizeToDot()  // ★ 独立圆点方案
             }
         }
-        topBar.addView(closeBtn)
+        // ★ closeBtn 尺寸 40x40dp
+        val closeLp = LinearLayout.LayoutParams(
+            dp(40), dp(40)
+        ).apply {
+            leftMargin = dp(4)
+        }
+        closeBtn.layoutParams = closeLp
+        // ★ 右侧弹性空间（让授权按钮居中，closeBtn 靠右）
+        topBar.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+        })
         // 顶栏加到外层顶部
         val topBarLp = FrameLayout.LayoutParams(
             FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT,
@@ -238,6 +253,8 @@ class FloatWindowService : Service() {
         )
         topBar.layoutParams = topBarLp
         outer.addView(topBar)
+        // 将 closeBtn 追加到 topBar 尾部（放右侧）
+        topBar.addView(closeBtn)
 
         // ★ 内层 LinearLayout（垂直）：绿框 + 结果区 紧贴排列（在顶栏下方）
         val container = LinearLayout(this).apply {
@@ -741,12 +758,9 @@ class FloatWindowService : Service() {
         continuousScanning = false
         scanHandler.removeCallbacksAndMessages(null)
         authPollHandler.removeCallbacksAndMessages(null)
-        // ★ 停止扫描时释放长期 VirtualDisplay + ImageReader
-        try { ocrVirtualDisplay?.release() } catch (_: Exception) {}
-        try { ocrImageReader?.close() } catch (_: Exception) {}
-        ocrVirtualDisplay = null
-        ocrImageReader = null
-        Log.d("FloatWindow", "stopContinuousScan: 释放 VirtualDisplay")
+        // ★ 保留 VirtualDisplay + MediaProjection token（用户点"继续"时复用）
+        // 只在 ACTION_STOP_SELF / MediaProjection.onStop 时真正释放
+        Log.d("FloatWindow", "stopContinuousScan: 暂停扫描（保留 MediaProjection）")
     }
 
     /** 浮窗待机模式下 OCR 开关点击（暂停/恢复三态）：
@@ -1194,6 +1208,11 @@ class FloatWindowService : Service() {
             }
             ACTION_SHOW_WINDOW -> {
                 // ★ Service 已在跑，root 被隐藏了，重新添加浮窗到 WindowManager
+                // 先恢复圆点状态（如果最小化中）
+                if (isMinimized) {
+                    restoreFromDot()
+                    return START_STICKY
+                }
                 if (this.root == null && params != null) {
                     val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
                     this.root = r
@@ -1205,7 +1224,30 @@ class FloatWindowService : Service() {
                     } catch (_: Exception) {}
                 }
             }
-            ACTION_AUTH_RESULT -> {
+            ACTION_STOP_SELF -> {
+                // ★ Android 14+ 前台服务必须在 stopService 之前 stopForeground（否则 onDestroy 不触发）
+                Log.d("FloatWindow", "ACTION_STOP_SELF 收到")
+                stopContinuousScan()
+                // 释放 MediaProjection
+                try {
+                    OcrBridge.mediaProjection?.stop()
+                } catch (_: Exception) {}
+                OcrBridge.mediaProjection = null
+                try {
+                    if (android.os.Build.VERSION.SDK_INT >= 24) {
+                        stopForeground(android.app.Service.STOP_FOREGROUND_REMOVE)
+                    } else {
+                        @Suppress("DEPRECATION")
+                        stopForeground(true)
+                    }
+                } catch (_: Exception) {}
+                stopSelf()
+                // 写 prefs 即时通知主页（不靠 onDestroy）
+                try {
+                    getSharedPreferences("souti_state", android.content.Context.MODE_PRIVATE)
+                        .edit().putBoolean("service_running", false).apply()
+                } catch (_: Exception) {}
+            }            ACTION_AUTH_RESULT -> {
                 Log.d("FloatWindow", "ACTION_AUTH_RESULT 收到")
                 try {
                     val resultCode = intent.getIntExtra("result_code", 0)
@@ -1217,12 +1259,18 @@ class FloatWindowService : Service() {
                     }
                     if (data == null) {
                         Log.e("FloatWindow", "授权 data 为 null")
+                        writeErrorAndRollbackUi("授权失败：data 为 null")
                         return START_STICKY
                     }
                     val mpm = getSystemService(Context.MEDIA_PROJECTION_SERVICE) as android.media.projection.MediaProjectionManager
                     val projection = mpm.getMediaProjection(resultCode, data)
+                    if (projection == null) {
+                        Log.e("FloatWindow", "getMediaProjection 返回 null")
+                        writeErrorAndRollbackUi("getMediaProjection 失败（Token 过期？）")
+                        return START_STICKY
+                    }
                     // ★ Android 14 强制要求：createVirtualDisplay 前必须注册 Callback
-                    projection?.registerCallback(object : android.media.projection.MediaProjection.Callback() {
+                    projection.registerCallback(object : android.media.projection.MediaProjection.Callback() {
                         override fun onStop() {
                             Log.d("FloatWindow", "MediaProjection onStop")
                             // 用户停止录屏时，自动停止 OCR 扫描
@@ -1234,13 +1282,112 @@ class FloatWindowService : Service() {
                     OcrBridge.mediaProjection = projection
                     Log.d("FloatWindow", "Service 创建 MediaProjection 成功，自动开始扫描")
                     startContinuousScan()
-                    ocrTopSwitch?.text = "⏹停止扫描"
-                    statusDot?.let { d -> statusText?.let { t -> updateStatusUi(d, t, scanning = true) } }
-                } catch (e: Exception) {
-                    Log.e("FloatWindow", "Service 创建 MediaProjection 失败: ${e.message}", e)
+                    // ★ 启动成功才改 UI 文字；如果 scan 没启动成功，OCR 失败时回滚
+                    if (continuousScanning) {
+                        ocrTopSwitch?.text = "⏹停止扫描"
+                        statusDot?.let { d -> statusText?.let { t -> updateStatusUi(d, t, scanning = true) } }
+                    } else {
+                        Log.e("FloatWindow", "startContinuousScan 内部失败，回滚 UI")
+                        writeErrorAndRollbackUi("OCR 启动失败（VirtualDisplay 创建失败）")
+                    }
+                } catch (e: Throwable) {
+                    Log.e("FloatWindow", "Service 创建 MediaProjection 失败", e)
+                    writeErrorAndRollbackUi("授权失败: ${e.javaClass.simpleName}: ${e.message}")
                 }
             }
         }
         return START_STICKY
+    }
+
+    /** 写错误到 prefs + 回滚 UI 按钮 */
+    private fun writeErrorAndRollbackUi(errorMsg: String) {
+        Log.e("FloatWindow", "OCR 授权失败: $errorMsg")
+        try {
+            getSharedPreferences("souti_state", android.content.Context.MODE_PRIVATE)
+                .edit().putString("last_error", errorMsg).apply()
+        } catch (_: Throwable) {}
+        try {
+            ocrTopSwitch?.text = "🔓授权并扫描"
+            ocrTopSwitch?.isEnabled = true
+            statusDot?.let { d -> statusText?.let { t -> updateStatusUi(d, t, scanning = false) } }
+        } catch (_: Throwable) {}
+    }
+
+    // ============ ★ 最小化（独立 40x40 圆点窗口，最可靠） ============
+
+    /** 最小化：隐藏完整浮窗 → 显示 40x40 绿底圆点（可拖动） */
+    private fun minimizeToDot() {
+        if (isMinimized) return
+        stopContinuousScan()  // 暂停扫描（保留 MediaProjection）
+        // 1. 移除完整浮窗
+        val r = root
+        if (r != null) {
+            try { windowManager.removeView(r) } catch (_: Exception) {}
+            root = null
+        }
+        // 2. 创建 40x40 圆点窗口
+        val dot = FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#1D9E75"))
+            // 圆角
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#1D9E75"))
+                cornerRadius = dp(20).toFloat()
+            }
+        }
+        val dotText = TextView(this).apply {
+            text = "+"
+            setTextColor(Color.WHITE)
+            textSize = 24f
+            setTypeface(typeface, Typeface.BOLD)
+            gravity = Gravity.CENTER
+        }
+        dot.addView(dotText, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+        ))
+        val dotP = WindowManager.LayoutParams(
+            dp(40), dp(40),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = dp(40)
+            y = dp(200)
+        }
+        dot.setOnClickListener { restoreFromDot() }  // 点击恢复
+        try {
+            windowManager.addView(dot, dotP)
+        } catch (e: Exception) {
+            Log.e("FloatWindow", "创建圆点失败", e)
+            return
+        }
+        minimizedDot = dot
+        minimizedDotParams = dotP
+        isMinimized = true
+        Log.d("FloatWindow", "最小化：显示 40x40 圆点")
+    }
+
+    /** 恢复：移除圆点 → 重建完整浮窗 */
+    private fun restoreFromDot() {
+        if (!isMinimized) return
+        // 1. 移除圆点
+        minimizedDot?.let { d ->
+            try { windowManager.removeView(d) } catch (_: Exception) {}
+        }
+        minimizedDot = null
+        // 2. 重建完整浮窗（沿用原 params 位置）
+        val p = params ?: run { isMinimized = false; return }
+        val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        root = r
+        buildStandbyUi(r)
+        val searchUi = buildSearchUi(r)
+        searchUi.visibility = View.GONE
+        try {
+            windowManager.addView(r, p)
+        } catch (e: Exception) {
+            Log.e("FloatWindow", "恢复浮窗失败", e)
+        }
+        isMinimized = false
+        Log.d("FloatWindow", "恢复：重建完整浮窗")
     }
 }
