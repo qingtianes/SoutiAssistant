@@ -129,8 +129,7 @@ class FloatWindowService : Service() {
     private fun showFloatWindow() {
         val r = FrameLayout(this).apply {
             setBackgroundColor(Color.TRANSPARENT)
-            // ★ 允许子 View 超出父 View 边界（绿框 resize 可超浮窗宽度而不被裁剪）
-            clipChildren = false
+            // clipChildren 保持默认 true：浮窗内容严格限制在浮窗边界内（模块4不侵入其他区域）
         }
         root = r
 
@@ -171,7 +170,7 @@ class FloatWindowService : Service() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
             )
-            clipChildren = false  // ★ 允许 container 内容溢出 outer 边界（绿框 resize 可超出浮窗）
+            // clipChildren 保持默认 true：子 View（container）不能绘制出 outer 边界 → 模块4 不会侵入模块1/2/3
         }
 
         // ★ 顶栏（绿框外）：●扫描中 + 🔍搜题 + 授权并启动 + ✕
@@ -271,7 +270,7 @@ class FloatWindowService : Service() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
-            clipChildren = false  // ★ 允许绿框 (recognizeArea) 溢出 container 边界
+            // clipChildren 保持默认 true：子 View（绿框/ScrollView）不能绘制出 container 边界 → 模块4 只在自己区域显示
         }
         // 顶部 padding（极简：topSpace=0，绿框紧贴顶栏下沿，视觉上 0 间距）
         val topSpace = View(this).apply {
@@ -338,6 +337,8 @@ class FloatWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8), dp(6), dp(8), dp(6))
             setBackgroundColor(Color.parseColor("#22000000"))
+            // ★ 显式裁剪：卡片内容只能绘制在本容器内（绝不溢出到 ScrollView/绿框/顶栏）
+            clipChildren = true
             // ★ 显式 MATCH_PARENT 宽（不被 ScrollView 默认 WRAP_CONTENT 干扰）
             //    卡片 layoutParams.width = MATCH_PARENT 才能正确跟随 resultContainer 宽度
             layoutParams = FrameLayout.LayoutParams(
