@@ -1468,8 +1468,12 @@ class FloatWindowService : Service() {
             try { windowManager.removeView(d) } catch (_: Exception) {}
         }
         minimizedDot = null
-        // 2. 重建完整浮窗（沿用原 params 位置）
+        // 2. 重建完整浮窗（沿用原 params 位置 + 重算 height 避免 resize 残留）
         val p = params ?: run { isMinimized = false; return }
+        // ★ 重算 height：minimize 时 params.height 保留了 resize 后的尺寸（小绿框时 height 偏小）
+        //    restore 时按当前公式（topBar 28 + topSpace 0 + 当前绿框高 + OCR 180）重算，避免 OCR ScrollView 被裁
+        val greenH = ocrRecognizeHeight
+        p.height = dp(28) + dp(0) + greenH + dp(180)
         val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         root = r
         buildStandbyUi(r)
