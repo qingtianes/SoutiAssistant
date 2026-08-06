@@ -336,10 +336,11 @@ class FloatWindowService : Service() {
             scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
             addView(resultsContainer)
         }
-        // ★ 固定 dp(200) 高度：没内容时不撑大浮窗（避免"下面太长"问题）
-        //    内容超出时 ScrollView 内部滚动
+        // ★ 输出显示框占满浮窗剩余空间（weight=1）：
+        //    滑动区域 = 绿框下方全部区域（不再只有 200dp 小框）
+        //    浮窗总高度固定(520dp)，内容超出时 ScrollView 内部滚动，绿框 150dp 固定不受影响
         ocrResults.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(200)
+            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
         )
         container.addView(ocrResults)
         ocrResultContainer = resultsContainer

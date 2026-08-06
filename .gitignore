@@ -6,6 +6,12 @@ app/build/
 *.apk
 *.aab
 
+# ── 命令行构建临时目录（避开 Studio 锁冲突用，本机可删）──
+.gradle_home_cli*/
+.gradle_cli*/
+.gradle_tmp/
+app/build_cli/
+
 # ── 本机环境（绝不上传！）──
 local.properties
 
