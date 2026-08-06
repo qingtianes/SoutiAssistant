@@ -296,6 +296,23 @@ class FloatWindowService : Service() {
         }
         container.addView(recognizeArea)
 
+        // ★ 模块3：OCR 识别状态显示（绿框下方固定一行，不随匹配结果滚动）
+        //    识别到的原文实时显示在这里；无内容时隐藏不占空间
+        val ocrStatusText = TextView(this).apply {
+            textSize = 10f
+            setTextColor(Color.parseColor("#888888"))
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            visibility = View.GONE  // 无 OCR 内容时隐藏
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+        container.addView(ocrStatusText)
+        ocrStatusTextView = ocrStatusText
+
         // ◢ 拖拽手柄（绿框内最右下，唯一在绿框内的元素）
         val resizeHandle = TextView(this).apply {
             text = "◢"
@@ -718,6 +735,8 @@ class FloatWindowService : Service() {
     private var ocrResultContainer: LinearLayout? = null
     /** ScrollView 包裹结果区，用于渲染后自动滚到顶部 */
     private var ocrResultScroll: ScrollView? = null
+    /** ★ 模块3：OCR 识别状态 TextView（独立显示识别到的文字，不随匹配结果滚动） */
+    private var ocrStatusTextView: TextView? = null
     /** ★ 红色调试框（显示 OCR 实际识别范围） */
     private var redBorderView: View? = null
     /** OCR 顶部开关按钮引用 */
@@ -984,14 +1003,15 @@ class FloatWindowService : Service() {
         resultContainer.removeAllViews()
         // ★ 滚到顶部（让用户看到最新最佳匹配）
         ocrResultScroll?.post { ocrResultScroll?.scrollTo(0, 0) }
-        // ★ 始终先显示 OCR 识别到的原文（让用户知道 OCR 真的在识别、识别到了什么）
-        if (ocrRawText.isNotBlank()) {
-            resultContainer.addView(TextView(this).apply {
-                text = "[OCR 识别] ${ocrRawText.take(120).replace("\n", " ")}${if (ocrRawText.length > 120) "..." else ""}"
-                textSize = 10f
-                setTextColor(Color.parseColor("#888888"))
-                setPadding(dp(4), dp(2), dp(4), dp(4))
-            })
+        // ★ 模块3：OCR 识别状态实时显示（独立模块在绿框下方，不随匹配结果滚动）
+        ocrStatusTextView?.let { st ->
+            if (ocrRawText.isNotBlank()) {
+                st.text = "[OCR 识别] ${ocrRawText.take(120).replace("\n", " ")}${if (ocrRawText.length > 120) "..." else ""}"
+                st.visibility = View.VISIBLE
+            } else {
+                st.text = ""
+                st.visibility = View.GONE
+            }
         }
         if (results.isEmpty()) {
             resultContainer.addView(TextView(this).apply {
@@ -1089,15 +1109,17 @@ class FloatWindowService : Service() {
             // ★ 关键修复：ScrollView 高 = min(desired, container 剩余)，保证不溢出 container（避免卡片侵入上方区域）
             val desired = contentH.coerceIn(dp(60), dp(180))
             val greenH = ocrRecognizeHeight
-            val containerRemaining = p.height - dp(28) - dp(0) - greenH
+            // 模块3（OCR 状态）高度：可见才占空间
+            val ocrStatusH = if (ocrStatusTextView?.visibility == View.VISIBLE) (ocrStatusTextView?.height ?: 0) else 0
+            val containerRemaining = p.height - dp(28) - dp(0) - greenH - ocrStatusH
             val scrollH = minOf(desired, containerRemaining).coerceAtLeast(dp(60))
             val olp = ocrScroll.layoutParams as? LinearLayout.LayoutParams ?: return@post
             if (olp.height != scrollH) {
                 olp.height = scrollH
                 ocrScroll.layoutParams = olp
             }
-            // 浮窗总高同步 = topBar(28) + topSpace(0) + 绿框 + ScrollView(scrollH)
-            val actualH = dp(28) + dp(0) + greenH + scrollH
+            // 浮窗总高同步 = topBar(28) + topSpace(0) + 绿框 + 模块3 + ScrollView(scrollH)
+            val actualH = dp(28) + dp(0) + greenH + ocrStatusH + scrollH
             if (p.height != actualH) {
                 p.height = actualH
                 windowManager.updateViewLayout(contentRoot, p)
@@ -1210,9 +1232,10 @@ class FloatWindowService : Service() {
                     lp.height = newH
                     dragArea.layoutParams = lp
                     ocrRecognizeHeight = newH  // 同步给字段（OCR 用）
-                    // ★ 浮窗总高动态同步：topBar(28) + topSpace(0) + 绿框 + 输出框(180)
+                    // ★ 浮窗总高动态同步：topBar(28) + topSpace(0) + 绿框 + 模块3 + 输出框(180)
                     //     否则绿框变小后 container 内 LinearLayout 末尾会留白（content 总高 < container 高）
-                    val targetH = dp(28) + dp(0) + newH + dp(180)
+                    val ocrStatusH = if (ocrStatusTextView?.visibility == View.VISIBLE) (ocrStatusTextView?.height ?: 0) else 0
+                    val targetH = dp(28) + dp(0) + newH + ocrStatusH + dp(180)
                     // ★ 浮窗 width 同步：绿框超出浮窗默认宽时浮窗跟着变（让绿框覆盖桌面 OCR 更多内容）
                     val targetW = maxOf(dp(360), newW + dp(8))
                     if (p.height != targetH || p.width != targetW) {
@@ -1489,7 +1512,8 @@ class FloatWindowService : Service() {
         // ★ 重算 height：minimize 时 params.height 保留了 resize 后的尺寸（小绿框时 height 偏小）
         //    restore 时按当前公式（topBar 28 + topSpace 0 + 当前绿框高 + OCR 180）重算，避免 OCR ScrollView 被裁
         val greenH = ocrRecognizeHeight
-        p.height = dp(28) + dp(0) + greenH + dp(180)
+        val ocrStatusH = if (ocrStatusTextView?.visibility == View.VISIBLE) (ocrStatusTextView?.height ?: 0) else 0
+        p.height = dp(28) + dp(0) + greenH + ocrStatusH + dp(180)
         val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         root = r
         buildStandbyUi(r)
