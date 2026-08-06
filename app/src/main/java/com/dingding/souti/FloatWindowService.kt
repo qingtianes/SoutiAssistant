@@ -158,12 +158,12 @@ class FloatWindowService : Service() {
      *  OCR 范围 = 绿框区域（可拖动，识别框跟随）
      */
     private fun buildStandbyUi(root: ViewGroup): View {
-        // ★ 外层 FrameLayout（绝对定位：顶栏 + 绿框 + 结果区 + 红色调试框）
-        val outer = FrameLayout(this).apply {
-            // ★ 显式撑满父容器（避免 WRAP_CONTENT 带来的测量不确定性）
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT,
-                FrameLayout.LayoutParams.MATCH_PARENT
+        // ★ 外层 LinearLayout VERTICAL（自然垂直排列：顶栏 + 容器，容器 weight=1 占满剩余 → 浮窗无底部透明空白）
+        val outer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.MATCH_PARENT
             )
         }
 
@@ -243,20 +243,20 @@ class FloatWindowService : Service() {
         topBar.addView(View(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
         })
-        // 顶栏加到外层顶部
-        val topBarLp = FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.TOP
-        )
-        topBar.layoutParams = topBarLp
+        // 顶栏加到外层（LinearLayout 子 View：默认 layoutParams MATCH_PARENT × WRAP_CONTENT OK）
         outer.addView(topBar)
         // 将 closeBtn 追加到 topBar 尾部（放右侧）
         topBar.addView(closeBtn)
 
         // ★ 内层 LinearLayout（垂直）：绿框 + 结果区 紧贴排列（在顶栏下方）
+        //    设 layoutParams = MATCH_PARENT, weight=1：撑满 outer 剩余高度
+        //    → 浮窗底部再无透明空白区（之前 outer 是 FrameLayout + container WRAP_CONTENT 时底部漏出 ~34dp 透明区）
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(Color.TRANSPARENT)
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
+            )
         }
         // 顶部 padding（让绿框离顶栏有一点间距）
         val topSpace = View(this).apply {
