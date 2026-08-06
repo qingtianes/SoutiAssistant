@@ -127,7 +127,11 @@ class FloatWindowService : Service() {
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
 
     private fun showFloatWindow() {
-        val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        val r = FrameLayout(this).apply {
+            setBackgroundColor(Color.TRANSPARENT)
+            // ★ 允许子 View 超出父 View 边界（绿框 resize 可超浮窗宽度而不被裁剪）
+            clipChildren = false
+        }
         root = r
 
         // ★ 浮窗默认高度精确 = topBar(28) + topSpace(0) + 绿框(150) + 输出框(180) = 358dp
@@ -174,7 +178,7 @@ class FloatWindowService : Service() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Color.TRANSPARENT)  // 完全透明
-            setPadding(dp(2), dp(2), dp(2), dp(2))  // 缩小 padding
+            setPadding(dp(4), dp(2), dp(4), dp(2))  // 左右 4dp 缩进：内容缩到绿框宽度内（与绿框 margin 对齐）
         }
         // ●扫描中
         val statusDot = View(this).apply {
@@ -270,7 +274,7 @@ class FloatWindowService : Service() {
         }
         container.addView(topSpace)
 
-        // ★ 绿框识别区（纯识别区，里面只有 ◢ 拖拽手柄，其他都没有！）
+        // ★ 绿框识别区（WRAP_CONTENT 宽：resize 可以超过浮窗宽度，受 root.clipChildren=false 支持）
         val recognizeArea = FrameLayout(this).apply {
             id = R_ID_RECOGNIZE  // ★ 给个稳定 ID（captureAndProcessOnce 用 getLocationOnScreen 获取真实坐标）
             background = GradientDrawable().apply {
@@ -280,10 +284,9 @@ class FloatWindowService : Service() {
             }
         }
         recognizeArea.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT, dp(150)
+            LinearLayout.LayoutParams.WRAP_CONTENT, dp(150)
         ).apply {
             leftMargin = dp(4)
-            rightMargin = dp(4)
         }
         container.addView(recognizeArea)
 
@@ -1176,7 +1179,7 @@ class FloatWindowService : Service() {
                     // ★ ◢ 对角线拖动：dx 改宽度，dy 改高度
                     val dx = (event.rawX - initTX).toInt()
                     val dy = (event.rawY - initTY).toInt()
-                    val newW = (initBoxW + dx).coerceIn(dp(100), dp(360))  // 宽度 100-360dp
+                    val newW = (initBoxW + dx).coerceIn(dp(100), dp(720))  // 宽度 100-720dp（可超出浮窗宽度，由 root.clipChildren=false 支持）
                     val newH = (initBoxH + dy).coerceIn(dp(20), dp(400))   // 高度 20-400dp（20dp = 单行字高度）
                     // ★ recognizeArea 是 LinearLayout 子 View，layoutParams 是 LinearLayout.LayoutParams
                     val lp = dragArea.layoutParams as LinearLayout.LayoutParams
@@ -1363,56 +1366,86 @@ class FloatWindowService : Service() {
 
     // ============ ★ 最小化（独立 40x40 圆点窗口，最可靠） ============
 
-    /** 最小化：隐藏完整浮窗 → 显示 40x40 绿底圆点（可拖动） */
+    /** 最小化：隐藏完整浮窗 → 显示 28x28 红色 + 按钮（无绿圈、可拖动、出现在 — 消失的位置） */
     private fun minimizeToDot() {
         if (isMinimized) return
         stopContinuousScan()  // 暂停扫描（保留 MediaProjection）
+        // ★ 先算 — 按钮的屏幕中心位置（+ 号初始位置 = — 消失的位置；root.removeView 之后 View 已 detach，拿不到坐标）
+        val closeBtn = closeBtnRef
+        var xCenter = 0
+        var yCenter = 0
+        if (closeBtn != null && closeBtn.isAttachedToWindow) {
+            val loc = IntArray(2)
+            closeBtn.getLocationOnScreen(loc)
+            xCenter = loc[0] + closeBtn.width / 2
+            yCenter = loc[1] + closeBtn.height / 2
+        } else {
+            val p = params
+            if (p != null) {
+                xCenter = p.x + p.width - dp(20)
+                yCenter = p.y + dp(14)
+            }
+        }
         // 1. 移除完整浮窗
         val r = root
         if (r != null) {
             try { windowManager.removeView(r) } catch (_: Exception) {}
             root = null
         }
-        // 2. 创建 40x40 圆点窗口
-        val dot = FrameLayout(this).apply {
-            setBackgroundColor(Color.parseColor("#1D9E75"))
-            // 圆角
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(Color.parseColor("#1D9E75"))
-                cornerRadius = dp(20).toFloat()
-            }
-        }
-        val dotText = TextView(this).apply {
+        // 2. 创建 28x28 + 按钮窗口（无绿圈、红色 + 文字、半透明白底轻微提示）
+        val dotSize = dp(28)
+        val dot = TextView(this).apply {
             text = "+"
-            setTextColor(Color.WHITE)
-            textSize = 24f
+            setTextColor(Color.parseColor("#E24B4A"))  // 红色（与 — 按钮同色）
+            textSize = 22f
             setTypeface(typeface, Typeface.BOLD)
+            setBackgroundColor(Color.parseColor("#33FFFFFF"))  // 半透明白底（轻微视觉提示，无绿圈）
             gravity = Gravity.CENTER
+            includeFontPadding = false
         }
-        dot.addView(dotText, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-        ))
         val dotP = WindowManager.LayoutParams(
-            dp(40), dp(40),
+            dotSize, dotSize,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = dp(40)
-            y = dp(200)
+            // 居中对齐到 — 消失的位置
+            x = if (xCenter > 0) xCenter - dotSize / 2 else dp(40)
+            y = if (yCenter > 0) yCenter - dotSize / 2 else dp(200)
+        }
+        // ★ 可拖动
+        var initX = 0
+        var initY = 0
+        var initTouchX = 0f
+        var initTouchY = 0f
+        dot.setOnTouchListener { _, event ->
+            when (event.action) {
+                MotionEvent.ACTION_DOWN -> {
+                    initX = dotP.x
+                    initY = dotP.y
+                    initTouchX = event.rawX
+                    initTouchY = event.rawY
+                }
+                MotionEvent.ACTION_MOVE -> {
+                    dotP.x = initX + (event.rawX - initTouchX).toInt()
+                    dotP.y = initY + (event.rawY - initTouchY).toInt()
+                    windowManager.updateViewLayout(dot, dotP)
+                }
+            }
+            false  // 不消费，让 setOnClickListener 也能触发
         }
         dot.setOnClickListener { restoreFromDot() }  // 点击恢复
         try {
             windowManager.addView(dot, dotP)
         } catch (e: Exception) {
-            Log.e("FloatWindow", "创建圆点失败", e)
+            Log.e("FloatWindow", "创建 + 按钮失败", e)
             return
         }
         minimizedDot = dot
         minimizedDotParams = dotP
         isMinimized = true
-        Log.d("FloatWindow", "最小化：显示 40x40 圆点")
+        Log.d("FloatWindow", "最小化：显示 28x28 + 按钮（无绿圈）")
     }
 
     /** 恢复：移除圆点 → 重建完整浮窗 */
