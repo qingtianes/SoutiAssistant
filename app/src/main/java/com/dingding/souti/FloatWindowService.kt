@@ -130,12 +130,12 @@ class FloatWindowService : Service() {
         val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         root = r
 
-        // ★ 浮窗默认高度精确 = topBar(28) + topSpace(12) + 绿框(150) + 输出框(180) = 370dp
-        //    resize 绿框时由 bindResizeAndDrag 动态同步调 p.height，公式 = 28 + 12 + greenH + 180
-        //    renderScanResults 后由 updateFloatHeightAfterRender 调 p.height = 28 + 12 + greenH + contentH
+        // ★ 浮窗默认高度精确 = topBar(28) + topSpace(4) + 绿框(150) + 输出框(180) = 362dp
+        //    resize 绿框时由 bindResizeAndDrag 动态同步调 p.height，公式 = 28 + 4 + greenH + 180
+        //    renderScanResults 后由 updateFloatHeightAfterRender 调 p.height = 28 + 4 + greenH + contentH
         // ★ 浮窗默认宽度减小到 dp(360) = 1080px（在 1280px 屏幕里还有 200px 余量，不容易超出）
         val p = WindowManager.LayoutParams(
-            dp(360), dp(370),
+            dp(360), dp(362),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,  // ★ 允许浮窗超出屏幕边界
@@ -264,9 +264,9 @@ class FloatWindowService : Service() {
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
         }
-        // 顶部 padding（紧凑：让绿框紧贴顶栏，不再 36dp 太空）
+        // 顶部 padding（极紧凑：让绿框紧贴顶栏，4dp 留视觉分隔）
         val topSpace = View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(12))
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(4))
         }
         container.addView(topSpace)
 
@@ -1069,9 +1069,9 @@ class FloatWindowService : Service() {
                 olp.height = desired
                 ocrScroll.layoutParams = olp
             }
-            // 浮窗总高同步：topBar(28) + topSpace(12) + 绿框 + 输出框（自适应后高度）
+            // 浮窗总高同步：topBar(28) + topSpace(4) + 绿框 + 输出框（自适应后高度）
             val greenH = ocrRecognizeHeight
-            val targetH = dp(28) + dp(12) + greenH + desired
+            val targetH = dp(28) + dp(4) + greenH + desired
             if (p.height != targetH) {
                 p.height = targetH
                 windowManager.updateViewLayout(contentRoot, p)
@@ -1132,8 +1132,8 @@ class FloatWindowService : Service() {
         r.getChildAt(0).visibility = View.VISIBLE
         r.getChildAt(1).visibility = View.GONE
         params?.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
-        // ★ 恢复浮窗原始高度 370dp（之前 searchMode 改成 460dp 没恢复）
-        params?.height = dp(370)
+        // ★ 恢复浮窗原始高度 362dp（之前 searchMode 改成 460dp 没恢复）
+        params?.height = dp(362)
         windowManager.updateViewLayout(r, params)
     }
 
@@ -1184,9 +1184,9 @@ class FloatWindowService : Service() {
                     lp.height = newH
                     dragArea.layoutParams = lp
                     ocrRecognizeHeight = newH  // 同步给字段（OCR 用）
-                    // ★ 浮窗总高动态同步：topBar(28) + topSpace(12) + 绿框 + 输出框(180)
+                    // ★ 浮窗总高动态同步：topBar(28) + topSpace(4) + 绿框 + 输出框(180)
                     //     否则绿框变小后 container 内 LinearLayout 末尾会留白（content 总高 < container 高）
-                    val targetH = dp(28) + dp(12) + newH + dp(180)
+                    val targetH = dp(28) + dp(4) + newH + dp(180)
                     if (p.height != targetH) {
                         p.height = targetH
                         windowManager.updateViewLayout(root, p)
