@@ -212,15 +212,16 @@ class FloatWindowService : Service() {
         manualBtn.layoutParams = manualLp
         topBar.addView(manualBtn)
         // ★ 左侧弹性空间（让授权按钮视觉居中）
-        //    weight=1.6f 偏大：补偿左侧 "●扫描 + 状态文字 + 🔍" 占空间多（让授权向左移视觉居中）
+        //    weight=0.6f 偏小：补偿左侧 "●扫描 + 状态文字 + 🔍" 占空间多，让授权向左移视觉居中
+        //    （之前 1.6f 方向反了——左弹性更大反而把授权推右）
         topBar.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 0, 1.6f)
+            layoutParams = LinearLayout.LayoutParams(0, 0, 0.6f)
         })
         // 授权/扫描按钮（混合态：未授权=授权，已授权未扫描=开始，已扫描=暂停）
         val topBtn = TextView(this).apply {
             text = when {
                 continuousScanning -> "⏸暂停"
-                OcrBridge.mediaProjection == null -> "🔓授权"
+                OcrBridge.mediaProjection == null -> "🔓授权并扫描"
                 else -> "▶开始"
             }
             setTextColor(Color.parseColor(if (continuousScanning) "#E24B4A" else "#1D9E75"))
@@ -1185,7 +1186,7 @@ class FloatWindowService : Service() {
                     // ★ ◢ 对角线拖动：dx 改宽度，dy 改高度
                     val dx = (event.rawX - initTX).toInt()
                     val dy = (event.rawY - initTY).toInt()
-                    val newW = (initBoxW + dx).coerceIn(dp(100), dp(720))  // 宽度 100-720dp（可超出浮窗宽度，由 root.clipChildren=false 支持）
+                    val newW = (initBoxW + dx).coerceIn(dp(100), dp(720))  // 宽度 100-720dp（可超出浮窗宽度）
                     val newH = (initBoxH + dy).coerceIn(dp(20), dp(400))   // 高度 20-400dp（20dp = 单行字高度）
                     // ★ recognizeArea 是 LinearLayout 子 View，layoutParams 是 LinearLayout.LayoutParams
                     val lp = dragArea.layoutParams as LinearLayout.LayoutParams
@@ -1196,8 +1197,11 @@ class FloatWindowService : Service() {
                     // ★ 浮窗总高动态同步：topBar(28) + topSpace(0) + 绿框 + 输出框(180)
                     //     否则绿框变小后 container 内 LinearLayout 末尾会留白（content 总高 < container 高）
                     val targetH = dp(28) + dp(0) + newH + dp(180)
-                    if (p.height != targetH) {
+                    // ★ 浮窗 width 同步：绿框超出浮窗默认宽时浮窗跟着变（让绿框覆盖桌面 OCR 更多内容）
+                    val targetW = maxOf(dp(360), newW + dp(8))
+                    if (p.height != targetH || p.width != targetW) {
                         p.height = targetH
+                        p.width = targetW
                         windowManager.updateViewLayout(root, p)
                     }
                     true
@@ -1418,9 +1422,9 @@ class FloatWindowService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             // 居中对齐到 — 消失的位置
-            // ★ 微调：+ 号（22f）baseline 视觉中心略低于 —（16f），dot 上移 dp(1) 补偿
+            // ★ 微调：+ 号（22f）baseline 视觉中心略低于 —（16f），dot 上移 dp(3) 补偿
             x = if (xCenter > 0) xCenter - dotSize / 2 else dp(40)
-            y = if (yCenter > 0) yCenter - dotSize / 2 - dp(1) else dp(200)
+            y = if (yCenter > 0) yCenter - dotSize / 2 - dp(3) else dp(200)
         }
         // ★ 可拖动
         var initX = 0
