@@ -171,6 +171,7 @@ class FloatWindowService : Service() {
                 LinearLayout.LayoutParams.MATCH_PARENT,
                 LinearLayout.LayoutParams.MATCH_PARENT
             )
+            clipChildren = false  // ★ 允许 container 内容溢出 outer 边界（绿框 resize 可超出浮窗）
         }
 
         // ★ 顶栏（绿框外）：●扫描中 + 🔍搜题 + 授权并启动 + ✕
@@ -210,9 +211,10 @@ class FloatWindowService : Service() {
         }
         manualBtn.layoutParams = manualLp
         topBar.addView(manualBtn)
-        // ★ 左侧弹性空间（让授权按钮居中）
+        // ★ 左侧弹性空间（让授权按钮视觉居中）
+        //    weight=1.6f 偏大：补偿左侧 "●扫描 + 状态文字 + 🔍" 占空间多（让授权向左移视觉居中）
         topBar.addView(View(this).apply {
-            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+            layoutParams = LinearLayout.LayoutParams(0, 0, 1.6f)
         })
         // 授权/扫描按钮（混合态：未授权=授权，已授权未扫描=开始，已扫描=暂停）
         val topBtn = TextView(this).apply {
@@ -246,6 +248,7 @@ class FloatWindowService : Service() {
         closeBtnRef = closeBtn  // 存引用，minimizeToDot 用它定位屏幕坐标
         // closeBtn WRAP_CONTENT（不强制 40x40dp，跟其他按钮同大小）
         // ★ 右侧弹性空间（让授权按钮居中，closeBtn 靠右）
+        //    weight=1f 偏小：补偿右侧 "—" 单按钮占空间少（与左侧 weight=1.6f 对应）
         topBar.addView(View(this).apply {
             layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
         })
@@ -267,6 +270,7 @@ class FloatWindowService : Service() {
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f
             )
+            clipChildren = false  // ★ 允许绿框 (recognizeArea) 溢出 container 边界
         }
         // 顶部 padding（极简：topSpace=0，绿框紧贴顶栏下沿，视觉上 0 间距）
         val topSpace = View(this).apply {
@@ -1394,14 +1398,15 @@ class FloatWindowService : Service() {
             try { windowManager.removeView(r) } catch (_: Exception) {}
             root = null
         }
-        // 2. 创建 28x28 + 按钮窗口（无绿圈、红色 + 文字、半透明白底轻微提示）
+        // 2. 创建 28x28 + 按钮窗口（无绿圈、红色 + 文字、背景完全透明）
         val dotSize = dp(28)
         val dot = TextView(this).apply {
             text = "+"
             setTextColor(Color.parseColor("#E24B4A"))  // 红色（与 — 按钮同色）
             textSize = 22f
             setTypeface(typeface, Typeface.BOLD)
-            setBackgroundColor(Color.parseColor("#33FFFFFF"))  // 半透明白底（轻微视觉提示，无绿圈）
+            // ★ 完全透明背景（不要任何白底/色底）
+            setBackgroundColor(Color.TRANSPARENT)
             gravity = Gravity.CENTER
             includeFontPadding = false
         }
@@ -1413,8 +1418,9 @@ class FloatWindowService : Service() {
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             // 居中对齐到 — 消失的位置
+            // ★ 微调：+ 号（22f）baseline 视觉中心略低于 —（16f），dot 上移 dp(1) 补偿
             x = if (xCenter > 0) xCenter - dotSize / 2 else dp(40)
-            y = if (yCenter > 0) yCenter - dotSize / 2 else dp(200)
+            y = if (yCenter > 0) yCenter - dotSize / 2 - dp(1) else dp(200)
         }
         // ★ 可拖动
         var initX = 0
