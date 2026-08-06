@@ -356,10 +356,13 @@ class FloatWindowService : Service() {
         val ocrResults = ScrollView(this).apply {
             isVerticalScrollBarEnabled = true
             scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
+            // ★ 强制裁剪：防止卡片内容绘制溢出 ScrollView 边界覆盖到顶栏/绿框
+            clipChildren = true
             addView(resultsContainer)
         }
-        // ★ 输出显示框默认高度 dp(180)，renderScanResults 后根据实际内容自适应调高
-        //    没/少内容时浮窗变小省屏，多内容时保持 180dp 上限 + ScrollView 内部滚动
+        // ★ 输出显示框固定 dp(180)：renderScanResults 后不再动态改 ScrollView 高（避免动态测量导致卡片重叠）
+        //    没/少内容时浮窗变小省屏通过 updateFloatHeightAfterRender 调浮窗总高实现，不影响 ScrollView
+        //    内容超出时 ScrollView 内部 180dp 范围内滚动
         ocrResults.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(180)
         )
@@ -1082,18 +1085,20 @@ class FloatWindowService : Service() {
             val container = ocrResultContainer ?: return@post
             // 等布局完成后再测量（post 到下一帧）
             val contentH = if (container.height > 0) container.height else container.measuredHeight
-            // 上限 180dp（多匹配时滚动），下限 60dp（无内容也保留可见区域）
+            // ★ 关键修复：ScrollView 高 = min(desired, container 剩余)，保证不溢出 container（避免卡片侵入上方区域）
             val desired = contentH.coerceIn(dp(60), dp(180))
+            val greenH = ocrRecognizeHeight
+            val containerRemaining = p.height - dp(28) - dp(0) - greenH
+            val scrollH = minOf(desired, containerRemaining).coerceAtLeast(dp(60))
             val olp = ocrScroll.layoutParams as? LinearLayout.LayoutParams ?: return@post
-            if (olp.height != desired) {
-                olp.height = desired
+            if (olp.height != scrollH) {
+                olp.height = scrollH
                 ocrScroll.layoutParams = olp
             }
-            // 浮窗总高同步：topBar(28) + topSpace(0) + 绿框 + 输出框（自适应后高度）
-            val greenH = ocrRecognizeHeight
-            val targetH = dp(28) + dp(0) + greenH + desired
-            if (p.height != targetH) {
-                p.height = targetH
+            // 浮窗总高同步 = topBar(28) + topSpace(0) + 绿框 + ScrollView(scrollH)
+            val actualH = dp(28) + dp(0) + greenH + scrollH
+            if (p.height != actualH) {
+                p.height = actualH
                 windowManager.updateViewLayout(contentRoot, p)
             }
         }
