@@ -178,7 +178,7 @@ class FloatWindowService : Service() {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
             setBackgroundColor(Color.TRANSPARENT)  // 完全透明
-            setPadding(dp(4), dp(2), dp(4), dp(2))  // 左右 4dp 缩进：内容缩到绿框宽度内（与绿框 margin 对齐）
+            setPadding(dp(8), dp(2), dp(8), dp(2))  // 左右 8dp 缩进：内容更聚到中间，不贴绿框边缘
         }
         // ●扫描中
         val statusDot = View(this).apply {
@@ -274,7 +274,9 @@ class FloatWindowService : Service() {
         }
         container.addView(topSpace)
 
-        // ★ 绿框识别区（WRAP_CONTENT 宽：resize 可以超过浮窗宽度，受 root.clipChildren=false 支持）
+        // ★ 绿框识别区：初始固定 dp(352) 宽（=浮窗宽 360 - 左右 margin 4*2）
+        //    resize 时 lp.width = newW 可超浮窗宽度（受 root.clipChildren=false 支持）
+        //    不能 WRAP_CONTENT：redBorder 子 View 是 MATCH_PARENT，WRAP_CONTENT 父下 MATCH_PARENT 失效→ 绿框初始 0dp 宽
         val recognizeArea = FrameLayout(this).apply {
             id = R_ID_RECOGNIZE  // ★ 给个稳定 ID（captureAndProcessOnce 用 getLocationOnScreen 获取真实坐标）
             background = GradientDrawable().apply {
@@ -284,7 +286,7 @@ class FloatWindowService : Service() {
             }
         }
         recognizeArea.layoutParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.WRAP_CONTENT, dp(150)
+            dp(352), dp(150)
         ).apply {
             leftMargin = dp(4)
         }
