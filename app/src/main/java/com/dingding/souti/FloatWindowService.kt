@@ -130,9 +130,11 @@ class FloatWindowService : Service() {
         val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         root = r
 
-        // ★ 浮窗尺寸：固定 dp(360) 宽 × dp(560) 高（足够大装下所有 section，让 matchScroll weight=1 内部滚动）
+        // ★ 浮窗高度 = MATCH_PARENT (整个屏幕高) — 不依赖 dp 转换、targetSdk 兼容性更好
+        // ★ 宽度 = dp(360) 固定
         val p = WindowManager.LayoutParams(
-            dp(360), dp(560),
+            dp(360),
+            WindowManager.LayoutParams.MATCH_PARENT,  // ★ 占满屏幕高度
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -958,8 +960,8 @@ class FloatWindowService : Service() {
     private fun renderScanResults(results: List<SearchResult>) {
         val resultContainer = ocrResultContainer ?: return
         resultContainer.removeAllViews()
-        // ★ 滚到顶部（让用户看到最新最佳匹配）
-        ocrResultScroll?.post { ocrResultScroll?.scrollTo(0, 0) }
+        // ★ 自动滚动到底部（最新最佳匹配在最底部，用户一眼看到）
+        ocrResultScroll?.post { ocrResultScroll?.fullScroll(View.FOCUS_DOWN) }
         // ★ OCR 原文识别行加到 ocrStatusContainer（绿框上方，taskBar 下方）
         ocrStatusContainer?.removeAllViews()
         if (ocrRawText.isNotBlank()) {
