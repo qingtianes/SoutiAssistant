@@ -1005,10 +1005,14 @@ class FloatWindowService : Service() {
                     else Color.parseColor("#F5F5F5")          // 次候选=浅灰
                 )
                 setPadding(dp(10), dp(6), dp(10), dp(6))
-                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                lp.bottomMargin = dp(4)
-                lp.gravity = Gravity.CENTER_HORIZONTAL  // 居中
-                layoutParams = lp
+                // ★ 卡片 MATCH_PARENT 宽（与 resultContainer 一致），子 View MATCH_PARENT 嵌套 MATCH_PARENT 父不再异常
+                //    删掉 lp.gravity = Gravity.CENTER_HORIZONTAL（旧写法在多次扫描 + 滚动时偶尔导致卡片视觉重叠）
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    bottomMargin = dp(4)
+                }
             }
             card.addView(TextView(this).apply {
                 text = (if (isBest) "🎯 " else "${idx + 1}. ") + sr.question.stem
