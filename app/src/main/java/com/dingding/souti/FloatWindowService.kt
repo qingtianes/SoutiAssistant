@@ -65,11 +65,11 @@ class FloatWindowService : Service() {
     private lateinit var windowManager: WindowManager
     private var root: View? = null
     private var params: WindowManager.LayoutParams? = null
+    /** ★ 顶栏最小化按钮引用（用于 minimizeToDot 时计算屏幕坐标和尺寸） */
+    private var closeBtnRef: View? = null
     /** ★ 最小化圆点窗口（独立 40x40 小窗口，最可靠方案） */
     private var minimizedDot: View? = null
     private var minimizedDotParams: WindowManager.LayoutParams? = null
-    /** ★ 顶栏最小化按钮引用（用于 minimizeToDot 时计算屏幕坐标和尺寸） */
-    private var closeBtnRef: View? = null
     private var isMinimized: Boolean = false
     private val bank by lazy { QuestionBank(this) }
 
@@ -130,23 +130,22 @@ class FloatWindowService : Service() {
         val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         root = r
 
-        // ★ 浮窗高度 = MATCH_PARENT (整个屏幕高) — 不依赖 dp 转换、targetSdk 兼容性更好
-        // ★ 宽度 = dp(360) 固定
+        // ★ 浮窗默认大尺寸：容纳 绿框识别区(300dp) + OCR结果区(180dp) + 状态栏(40dp)
+        // ★ 浮窗默认宽度减小到 dp(360) = 1080px（在 1280px 屏幕里还有 200px 余量，不容易超出）
         val p = WindowManager.LayoutParams(
-            dp(360),
-            WindowManager.LayoutParams.MATCH_PARENT,  // ★ 占满屏幕高度
+            dp(360), dp(520),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,  // ★ 允许浮窗超出屏幕边界
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             x = dp(40)
-            y = dp(120)
+            y = dp(200)
         }
         params = p
 
-        // 待机模式 UI（OCR 扫描 + 手动搜题备用）
+        // 待机模式 UI（OCR 扫描 + 手动搜题备用 全在这里）
         buildStandbyUi(r)
         // 搜题模式 UI（纯手动搜题备用）
         val searchUi = buildSearchUi(r)
@@ -159,101 +158,57 @@ class FloatWindowService : Service() {
      *  OCR 范围 = 绿框区域（可拖动，识别框跟随）
      */
     private fun buildStandbyUi(root: ViewGroup): View {
-        // ★ 外层 FrameLayout：固定宽度 dp(360)，高度 wrap_content（让 stack 自然撑高）
+        // ★ 外层 FrameLayout（绝对定位：顶栏 + 绿框 + 结果区 + 红色调试框）
         val outer = FrameLayout(this).apply {
-            layoutParams = FrameLayout.LayoutParams(
-                dp(360),                    // ★ 固定宽度（match_parent 不行——stack 是 wrap_content 会塌陷成 0）
-                FrameLayout.LayoutParams.WRAP_CONTENT
-            )
-        }
-
-        // ★ 内层 stack：高度 MATCH_PARENT（匹配 outer 固定 800dp），让固定 section 占固定空间，matchScroll 用 weight=1 占剩余
-        val stack = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
+            // ★ 显式撑满父容器（避免 WRAP_CONTENT 带来的测量不确定性）
             layoutParams = FrameLayout.LayoutParams(
                 FrameLayout.LayoutParams.MATCH_PARENT,
                 FrameLayout.LayoutParams.MATCH_PARENT
             )
         }
 
-        // ★ 4) 匹配结果区（最顶：用户要求 4 在 1 上面）
-        val matchContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = ViewGroup.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            setBackgroundColor(Color.parseColor("#22000000"))
+        // ★ 顶栏（绿框外）：●扫描中 + 🔍搜题 + 授权并启动 + ✕
+        val topBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setBackgroundColor(Color.TRANSPARENT)  // 完全透明
+            setPadding(dp(2), dp(2), dp(2), dp(2))  // 缩小 padding
         }
-        val matchScroll = ScrollView(this).apply {
-            isVerticalScrollBarEnabled = true
-            scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
-            addView(matchContainer)
-            // ★ 完全固定 dp(280) 高度（不能加 weight=1，否则 LinearLayout 用 weight 算高度，忽略 explicit 值）
-            //    内容超出时 ScrollView 内部滚动，绝不挤压 taskBar + recognizeArea
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(280)
-            )
-        }
-        stack.addView(matchScroll)
-        ocrResultContainer = matchContainer
-        ocrResultScroll = matchScroll
-
-        // ★ 0) OCR 原文识别行（匹配结果下方）
-        val ocrStatusContainer = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            setPadding(dp(8), dp(4), dp(8), dp(4))
-            setBackgroundColor(Color.parseColor("#22000000"))
-        }
-        this.ocrStatusContainer = ocrStatusContainer
-        stack.addView(ocrStatusContainer)
-
-        // 1) 任务栏（固定高 32dp，宽 = MATCH_PARENT）
-        val taskBar = FrameLayout(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(32)
-            )
-        }
-        // 左侧组 [●扫描停止 🔍] — 注意：statusDot 等元素必须显式设 LP，否则默认 wrap_content size 从 drawable 读 (过大)
+        // ●扫描中
         val statusDot = View(this).apply {
             setBackgroundResource(android.R.drawable.presence_online)
-            // ★ 强制 8dp x 8dp（system drawable 默认是 24dp，会导致渲染异常）
             layoutParams = LinearLayout.LayoutParams(dp(8), dp(8))
         }
         val statusText = TextView(this).apply {
-            text = if (continuousScanning) "扫描中" else "扫描停止"  // ★ 去掉开头的 ● 字符（用 statusDot View 表示状态点）
+            text = if (continuousScanning) "扫描中" else "扫描停止"
             setTextColor(if (continuousScanning) Color.parseColor("#1D9E75") else Color.parseColor("#E24B4A"))
             textSize = 11f
             setPadding(dp(2), 0, dp(4), 0)
         }
+        this.statusDot = statusDot
+        this.statusText = statusText
+        topBar.addView(statusDot)
+        topBar.addView(statusText)
+        // 🔍搜题按钮（手动搜题备用）
         val manualBtn = TextView(this).apply {
             text = "🔍"
             setTextColor(Color.parseColor("#1D9E75"))
-            textSize = 14f
+            textSize = 13f
             setTypeface(typeface, Typeface.BOLD)
             setBackgroundColor(Color.TRANSPARENT)
-            // ★ leftMargin 让 🔍 跟左边文字有点距离
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
-                leftMargin = dp(4)
-            }
+            setPadding(dp(4), 0, dp(4), 0)
             setOnClickListener { switchToSearchMode() }
         }
-        val leftGroup = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setBackgroundColor(Color.TRANSPARENT)
-            addView(statusDot)
-            addView(statusText)
-            addView(manualBtn)
+        val manualLp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT).apply {
+            leftMargin = dp(4)
         }
-        this.statusDot = statusDot
-        this.statusText = statusText
-        // 中间授权按钮（绝对居中）
+        manualBtn.layoutParams = manualLp
+        topBar.addView(manualBtn)
+        // ★ 左侧弹性空间（让授权按钮居中）
+        topBar.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+        })
+        // 授权/扫描按钮（混合态：未授权=授权，已授权未扫描=开始，已扫描=暂停）
         val topBtn = TextView(this).apply {
             text = when {
                 continuousScanning -> "⏸暂停"
@@ -263,63 +218,76 @@ class FloatWindowService : Service() {
             setTextColor(Color.parseColor(if (continuousScanning) "#E24B4A" else "#1D9E75"))
             textSize = 11f
             setTypeface(typeface, Typeface.BOLD)
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(dp(4), 0, dp(4), 0)
+            setBackgroundColor(Color.TRANSPARENT)  // 透明底
+            setPadding(dp(4), dp(2), dp(4), dp(2))
             setOnClickListener { toggleOcrFromStandby() }
         }
         ocrTopSwitch = topBtn
-        // — 按钮（透明底，跟其他按钮同样大小）
+        topBar.addView(topBtn)
+        // — 按钮：最小化（隐藏完整浮窗 → 显示独立 36dp 透明 "+" 圆点窗口）
         val closeBtn = TextView(this).apply {
-            text = "—"
-            setTextColor(Color.parseColor("#E24B4A"))
+            text = "—"  // em-dash 最小化
+            setTextColor(Color.parseColor("#E24B4A"))  // 红色
             textSize = 16f
             setTypeface(typeface, Typeface.BOLD)
-            setBackgroundColor(Color.TRANSPARENT)
+            setBackgroundColor(Color.TRANSPARENT)  // ★ 透明底（不再绿底大白块）
             setPadding(dp(4), dp(0), dp(4), dp(0))
             includeFontPadding = false
-            setOnClickListener { this@FloatWindowService.minimizeToDot() }
-        }
-        this@FloatWindowService.closeBtnRef = closeBtn
-        // ★ taskBar 三段绝对定位（左/中/右）
-        taskBar.addView(leftGroup, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.START or Gravity.CENTER_VERTICAL
-        ))
-        taskBar.addView(topBtn, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.CENTER_HORIZONTAL or Gravity.CENTER_VERTICAL
-        ))
-        taskBar.addView(closeBtn, FrameLayout.LayoutParams(
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            FrameLayout.LayoutParams.WRAP_CONTENT,
-            Gravity.END or Gravity.CENTER_VERTICAL
-        ).apply {
-            rightMargin = dp(2)
-        })
-        // ★ OCR 原文识别行已 addView 到 stack（最顶）
-
-        stack.addView(taskBar)
-
-        // ★ 绿框（紧贴 taskBar 下方）
-        // 2) 绿框识别区（紧贴任务栏下方，宽 = MATCH_PARENT）
-        val recognizeArea = FrameLayout(this).apply {
-            id = R_ID_RECOGNIZE
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#11FFFFFF"))
-                setStroke(dp(2), Color.parseColor("#1D9E75"))
-                cornerRadius = dp(8).toFloat()
+            setOnClickListener {
+                this@FloatWindowService.minimizeToDot()
             }
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT, dp(150)
-            )
         }
-        // ◢ 拖拽手柄（右下）
+        closeBtnRef = closeBtn  // 存引用，minimizeToDot 用它定位屏幕坐标
+        // closeBtn WRAP_CONTENT（不强制 40x40dp，跟其他按钮同大小）
+        // ★ 右侧弹性空间（让授权按钮居中，closeBtn 靠右）
+        topBar.addView(View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
+        })
+        // 顶栏加到外层顶部
+        val topBarLp = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT,
+            Gravity.TOP
+        )
+        topBar.layoutParams = topBarLp
+        outer.addView(topBar)
+        // 将 closeBtn 追加到 topBar 尾部（放右侧）
+        topBar.addView(closeBtn)
+
+        // ★ 内层 LinearLayout（垂直）：绿框 + 结果区 紧贴排列（在顶栏下方）
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.TRANSPARENT)
+        }
+        // 顶部 padding（让绿框离顶栏有一点间距）
+        val topSpace = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(36))
+        }
+        container.addView(topSpace)
+
+        // ★ 绿框识别区（纯识别区，里面只有 ◢ 拖拽手柄，其他都没有！）
+        val recognizeArea = FrameLayout(this).apply {
+            id = R_ID_RECOGNIZE  // ★ 给个稳定 ID（captureAndProcessOnce 用 getLocationOnScreen 获取真实坐标）
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#11FFFFFF"))  // 极淡白底（方便用户看到绿框边界）
+                setStroke(dp(2), Color.parseColor("#1D9E75"))
+                cornerRadius = dp(10).toFloat()
+            }
+        }
+        recognizeArea.layoutParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(150)
+        ).apply {
+            leftMargin = dp(4)
+            rightMargin = dp(4)
+        }
+        container.addView(recognizeArea)
+
+        // ◢ 拖拽手柄（绿框内最右下，唯一在绿框内的元素）
         val resizeHandle = TextView(this).apply {
             text = "◢"
             setTextColor(Color.parseColor("#1D9E75"))
             textSize = 16f
+            setTypeface(typeface, Typeface.BOLD)
+            setBackgroundColor(Color.parseColor("#22FFFFFF"))
             setPadding(dp(4), 0, dp(4), 0)
         }
         resizeHandle.layoutParams = FrameLayout.LayoutParams(
@@ -331,23 +299,49 @@ class FloatWindowService : Service() {
         }
         recognizeArea.addView(resizeHandle)
         bindResizeAndDrag(resizeHandle, recognizeArea)
-        // 红色调试边框（默认隐藏）
+
+        // ★ 红色边框：放在 recognizeArea 内部（绿框内），完全等于绿框大小（不缩进）
+        // OCR 截屏范围 = 绿框 = 红色边框（红色边框只是视觉提示）
         val redBorder = View(this).apply {
             background = GradientDrawable().apply {
                 setColor(Color.TRANSPARENT)
-                setStroke(dp(2), Color.parseColor("#FF1744"))
+                setStroke(dp(2), Color.parseColor("#FF1744"))  // 红色
                 cornerRadius = dp(8).toFloat()
             }
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
-            )
-            visibility = View.GONE
         }
+        redBorder.layoutParams = FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+        )  // 不设 margin = 和绿框一样大
         recognizeArea.addView(redBorder)
         redBorderView = redBorder
-        stack.addView(recognizeArea)
+        // ★ 默认隐藏红色边框（用户在主页调试开关里开启才显示）
+        redBorder.visibility = View.GONE
 
-        outer.addView(stack)
+        // ★ 结果区（绿框下方，紧贴）
+        val resultsContainer = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(6), dp(8), dp(6))
+            setBackgroundColor(Color.parseColor("#22000000"))
+            val hint = TextView(this@FloatWindowService).apply {
+                text = "（OCR 结果将在这里显示）"
+                textSize = 12f
+                setTextColor(Color.parseColor("#888888"))
+                gravity = Gravity.CENTER
+                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+            }
+            addView(hint)
+        }
+        val ocrResults = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = true
+            scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
+            addView(resultsContainer)
+        }
+        ocrResults.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+        container.addView(ocrResults)
+        ocrResultContainer = resultsContainer
+        ocrResultScroll = ocrResults
+
+        outer.addView(container)
         root.addView(outer)
         return outer
     }
@@ -692,8 +686,6 @@ class FloatWindowService : Service() {
     private val authPollHandler = Handler(Looper.getMainLooper())
     /** 待机模式 OCR 结果容器（OCR 扫描时显示结果） */
     private var ocrResultContainer: LinearLayout? = null
-    /** ★ OCR 原文识别行容器（独立 section，在绿框上方显示） */
-    private var ocrStatusContainer: LinearLayout? = null
     /** ScrollView 包裹结果区，用于渲染后自动滚到顶部 */
     private var ocrResultScroll: ScrollView? = null
     /** ★ 红色调试框（显示 OCR 实际识别范围） */
@@ -960,27 +952,17 @@ class FloatWindowService : Service() {
     private fun renderScanResults(results: List<SearchResult>) {
         val resultContainer = ocrResultContainer ?: return
         resultContainer.removeAllViews()
-        // ★ 自动滚动到底部（最新最佳匹配在最底部，用户一眼看到）
-        ocrResultScroll?.post { ocrResultScroll?.fullScroll(View.FOCUS_DOWN) }
-        // ★ OCR 原文识别行加到 ocrStatusContainer（绿框上方，taskBar 下方）
-        ocrStatusContainer?.removeAllViews()
+        // ★ 滚到顶部（让用户看到最新最佳匹配）
+        ocrResultScroll?.post { ocrResultScroll?.scrollTo(0, 0) }
+        // ★ 始终先显示 OCR 识别到的原文（让用户知道 OCR 真的在识别、识别到了什么）
         if (ocrRawText.isNotBlank()) {
-            ocrStatusContainer?.addView(TextView(this).apply {
+            resultContainer.addView(TextView(this).apply {
                 text = "[OCR 识别] ${ocrRawText.take(120).replace("\n", " ")}${if (ocrRawText.length > 120) "..." else ""}"
                 textSize = 10f
                 setTextColor(Color.parseColor("#888888"))
                 setPadding(dp(4), dp(2), dp(4), dp(4))
             })
-        } else {
-            // ★ 没识别时显示占位（避免绿框和 OCR 行紧贴没有间距）
-            ocrStatusContainer?.addView(TextView(this).apply {
-                text = "[OCR 识别] 等待扫描..."
-                textSize = 10f
-                setTextColor(Color.parseColor("#666666"))
-                setPadding(dp(4), dp(2), dp(4), dp(4))
-            })
         }
-        // ★ 匹配结果显示（反序：最佳匹配最后 addView = 排在 LinearLayout 最底部 = 用户视线最近位置）
         if (results.isEmpty()) {
             resultContainer.addView(TextView(this).apply {
                 text = "未匹配到题库题目"
@@ -990,85 +972,67 @@ class FloatWindowService : Service() {
             })
             return
         }
-        // ★ 先加次匹配（idx>=1），最后加最佳匹配（idx=0）
-        // 结果: matchContainer 顶部 = 较差的, 底部 = 最佳（最显眼位置）
-        results.drop(1).forEachIndexed { idx, sr ->
-            val displayIdx = idx + 1  // #2, #3, ...
-            resultContainer.addView(buildResultCard(sr, displayIdx, isBest = false))
-        }
-        // 最佳匹配最后 addView（最底部）
-        resultContainer.addView(buildResultCard(results[0], 0, isBest = true))
-    }
-
-    /** 单个结果卡片（最佳/次匹配） */
-    private fun buildResultCard(sr: SearchResult, displayIdx: Int, isBest: Boolean): LinearLayout {
-        val card = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(
-                if (isBest) Color.parseColor("#E8F5E9")  // 最佳=浅绿
-                else Color.parseColor("#F5F5F5")          // 次候选=浅灰
-            )
-            setPadding(dp(10), dp(6), dp(10), dp(6))
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.WRAP_CONTENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            lp.bottomMargin = dp(4)
-            lp.gravity = Gravity.CENTER_HORIZONTAL
-            layoutParams = lp
-        }
-        card.addView(TextView(this).apply {
-            text = (if (isBest) "🎯 " else "${displayIdx}. ") + sr.question.stem
-            textSize = 11f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.parseColor("#222222"))
-            if (sr.question.options.isEmpty() && sr.question.answer.isEmpty()) {
-                // 切块模式：整块原样显示
-            } else {
-                maxLines = 2
-                ellipsize = TextUtils.TruncateAt.END
+// 显示最佳候选（前 5 条）
+        results.forEachIndexed { idx, sr ->
+            val isBest = idx == 0
+            // ★ 结果卡片：不透明背景（清晰可读）+ WRAP_CONTENT 居中
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                setBackgroundColor(
+                    if (isBest) Color.parseColor("#E8F5E9")  // 最佳=浅绿
+                    else Color.parseColor("#F5F5F5")          // 次候选=浅灰
+                )
+                setPadding(dp(10), dp(6), dp(10), dp(6))
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.WRAP_CONTENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.bottomMargin = dp(4)
+                lp.gravity = Gravity.CENTER_HORIZONTAL  // 居中
+                layoutParams = lp
             }
-        })
-        sr.question.options.forEach { opt ->
             card.addView(TextView(this).apply {
-                text = opt
-                textSize = 10f
-                setTextColor(Color.parseColor("#555555"))
-                val lp = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                lp.leftMargin = dp(4)
-                lp.topMargin = dp(1)
-                layoutParams = lp
-            })
-        }
-        if (sr.question.answer.isNotBlank()) {
-            card.addView(TextView(this).apply {
-                text = "✔ ${sr.question.answer}"
-                textSize = 14f
+                text = (if (isBest) "🎯 " else "${idx + 1}. ") + sr.question.stem
+                textSize = 11f
                 setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.parseColor("#1D9E75"))
-                val lp = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                )
-                lp.topMargin = dp(4)
+                setTextColor(Color.parseColor("#222222"))
+                if (sr.question.options.isEmpty() && sr.question.answer.isEmpty()) {
+                    // ★ 切块模式：整块原样显示（题干+选项+答案都在里面），不截断
+                } else {
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                }
+            })
+            // ★ 显示选项（考试 APP 会改选项顺序，必须让用户看到选项对照）
+            sr.question.options.forEach { opt ->
+                card.addView(TextView(this).apply {
+                    text = opt
+                    textSize = 10f
+                    setTextColor(Color.parseColor("#555555"))
+                    val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    lp.leftMargin = dp(4)
+                    lp.topMargin = dp(1)
+                    layoutParams = lp
+                })
+            }
+            if (sr.question.answer.isNotBlank()) {
+                card.addView(TextView(this).apply {
+                    text = "✔ ${sr.question.answer}"
+                    textSize = 14f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(Color.parseColor("#1D9E75"))
+                    val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                    lp.topMargin = dp(4)
+                    layoutParams = lp
+                })
+            }
+            card.addView(TextView(this).apply {
+                text = "来源：${sr.bankName} · 相关度 ${sr.score}"
+                textSize = 10f
+                setTextColor(Color.parseColor("#AAAAAA"))
+                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
+                lp.topMargin = dp(2)
                 layoutParams = lp
             })
+            resultContainer.addView(card)
         }
-        card.addView(TextView(this).apply {
-            text = "来源：${sr.bankName} · 相关度 ${sr.score}"
-            textSize = 10f
-            setTextColor(Color.parseColor("#AAAAAA"))
-            val lp = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            )
-            lp.topMargin = dp(2)
-            layoutParams = lp
-        })
-        return card
     }
 
     private fun startOcrPolling(input: EditText, searchBtn: Button, hint: TextView) {
@@ -1349,116 +1313,55 @@ class FloatWindowService : Service() {
     // ============ ★ 最小化（独立 40x40 圆点窗口，最可靠） ============
 
     /** 最小化：隐藏完整浮窗 → 显示 40x40 绿底圆点（可拖动） */
-    /** 最小化：隐藏浮窗 → 显示 "+"（透明底，尺寸 + 位置 = closeBtn） */
     private fun minimizeToDot() {
         if (isMinimized) return
         stopContinuousScan()  // 暂停扫描（保留 MediaProjection）
-
-        // ★ 在 detach 之前先记录 closeBtn 的屏幕坐标和尺寸
-        var cx = 0
-        var cy = 0
-        var cw = 0
-        var ch = 0
-        closeBtnRef?.let { btn ->
-            val loc = IntArray(2)
-            btn.getLocationOnScreen(loc)
-            cx = loc[0]
-            cy = loc[1]
-            cw = btn.width
-            ch = btn.height
-        }
-
         // 1. 移除完整浮窗
         val r = root
         if (r != null) {
             try { windowManager.removeView(r) } catch (_: Exception) {}
             root = null
         }
-
-        // 2. 创建 + 圆点（透明底，尺寸 = closeBtn，位置 = closeBtn）
+        // 2. 创建 40x40 圆点窗口
+        val dot = FrameLayout(this).apply {
+            setBackgroundColor(Color.parseColor("#1D9E75"))
+            // 圆角
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(Color.parseColor("#1D9E75"))
+                cornerRadius = dp(20).toFloat()
+            }
+        }
         val dotText = TextView(this).apply {
             text = "+"
-            setTextColor(Color.parseColor("#E24B4A"))  // 红色，跟 closeBtn 同色
-            textSize = 16f  // ★ 跟 closeBtn 一样大
+            setTextColor(Color.WHITE)
+            textSize = 24f
             setTypeface(typeface, Typeface.BOLD)
             gravity = Gravity.CENTER
-            setBackgroundColor(Color.TRANSPARENT)  // ★ 透明底
-            isClickable = true
-            isFocusable = false
         }
-        val sizeW: Int
-        val sizeH: Int
-        if (cw > 0 && ch > 0) {
-            sizeW = cw
-            sizeH = ch
-        } else {
-            sizeW = dp(30)
-            sizeH = dp(30)
-        }
+        dot.addView(dotText, FrameLayout.LayoutParams(
+            FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT
+        ))
         val dotP = WindowManager.LayoutParams(
-            sizeW, sizeH,
+            dp(40), dp(40),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            if (cx > 0 || cy > 0) {
-                x = cx
-                y = cy
-            } else {
-                x = dp(40)
-                y = dp(200)
-            }
+            x = dp(40)
+            y = dp(200)
         }
-        // ★ 拖动支持：>8dp 触发拖动，<8dp = 点击恢复
-        var downRawX = 0f
-        var downRawY = 0f
-        var dotStartX = 0
-        var dotStartY = 0
-        var moved = false
-        dotText.setOnTouchListener { _, event ->
-            when (event.action) {
-                android.view.MotionEvent.ACTION_DOWN -> {
-                    downRawX = event.rawX
-                    downRawY = event.rawY
-                    dotStartX = dotP.x
-                    dotStartY = dotP.y
-                    moved = false
-                    true
-                }
-                android.view.MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - downRawX
-                    val dy = event.rawY - downRawY
-                    if (!moved && (kotlin.math.abs(dx) > 8 || kotlin.math.abs(dy) > 8)) {
-                        moved = true
-                    }
-                    if (moved) {
-                        dotP.x = dotStartX + dx.toInt()
-                        dotP.y = dotStartY + dy.toInt()
-                        try {
-                            windowManager.updateViewLayout(dotText, dotP)
-                            minimizedDotParams = dotP
-                        } catch (_: Exception) {}
-                    }
-                    true
-                }
-                android.view.MotionEvent.ACTION_UP -> {
-                    if (!moved) restoreFromDot()
-                    true
-                }
-                else -> false
-            }
-        }
+        dot.setOnClickListener { restoreFromDot() }  // 点击恢复
         try {
-            windowManager.addView(dotText, dotP)
+            windowManager.addView(dot, dotP)
         } catch (e: Exception) {
             Log.e("FloatWindow", "创建圆点失败", e)
             return
         }
-        minimizedDot = dotText
+        minimizedDot = dot
         minimizedDotParams = dotP
         isMinimized = true
-        Log.d("FloatWindow", "最小化：+ 出现在 closeBtn 位置 (size=${sizeW}x${sizeH})")
+        Log.d("FloatWindow", "最小化：显示 40x40 圆点")
     }
 
     /** 恢复：移除圆点 → 重建完整浮窗 */
