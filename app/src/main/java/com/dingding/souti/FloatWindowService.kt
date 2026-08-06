@@ -130,10 +130,10 @@ class FloatWindowService : Service() {
         val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         root = r
 
-        // ★ 浮窗默认大尺寸：容纳 绿框识别区(300dp) + OCR结果区(180dp) + 状态栏(40dp)
+        // ★ 浮窗默认紧凑尺寸：绿框识别区(150dp) + OCR结果区(180dp) + 顶栏(36dp) ≈ 400dp
         // ★ 浮窗默认宽度减小到 dp(360) = 1080px（在 1280px 屏幕里还有 200px 余量，不容易超出）
         val p = WindowManager.LayoutParams(
-            dp(360), dp(520),
+            dp(360), dp(400),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,  // ★ 允许浮窗超出屏幕边界
@@ -336,11 +336,11 @@ class FloatWindowService : Service() {
             scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
             addView(resultsContainer)
         }
-        // ★ 输出显示框占满浮窗剩余空间（weight=1）：
-        //    滑动区域 = 绿框下方全部区域（不再只有 200dp 小框）
-        //    浮窗总高度固定(520dp)，内容超出时 ScrollView 内部滚动，绿框 150dp 固定不受影响
+        // ★ 输出显示框固定 dp(180)：合理大小不占满浮窗
+        //    浮窗总高度 400dp，没内容时只占 ~400dp（不撑大浮窗）
+        //    内容超出时 ScrollView 内部 180dp 范围内滚动
         ocrResults.layoutParams = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
+            ViewGroup.LayoutParams.MATCH_PARENT, dp(180)
         )
         container.addView(ocrResults)
         ocrResultContainer = resultsContainer
