@@ -337,9 +337,8 @@ class FloatWindowService : Service() {
             scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
             addView(resultsContainer)
         }
-        // ★ 输出显示框固定 dp(180)：合理大小不占满浮窗
-        //    浮窗总高度 400dp，没内容时只占 ~400dp（不撑大浮窗）
-        //    内容超出时 ScrollView 内部 180dp 范围内滚动
+        // ★ 输出显示框默认高度 dp(180)，renderScanResults 后根据实际内容自适应调高
+        //    没/少内容时浮窗变小省屏，多内容时保持 180dp 上限 + ScrollView 内部滚动
         ocrResults.layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT, dp(180)
         )
@@ -976,6 +975,8 @@ class FloatWindowService : Service() {
                 setTextColor(Color.parseColor("#888888"))
                 gravity = Gravity.CENTER
             })
+            // ★ 没匹配：浮窗总高根据内容自适应（无结果时缩到最小）
+            updateFloatHeightAfterRender()
             return
         }
 // 显示最佳候选（前 5 条）
@@ -1038,6 +1039,38 @@ class FloatWindowService : Service() {
                 layoutParams = lp
             })
             resultContainer.addView(card)
+        }
+        // ★ 有匹配：浮窗总高根据内容自适应（上限 180dp）
+        updateFloatHeightAfterRender()
+    }
+
+    /**
+     * 根据 OCR 结果容器内容高度自适应调 ScrollView 高度（上限 180dp，下限 60dp）
+     * 同时调 WindowManager 浮窗总高 = topBar(30) + topSpace(36) + 绿框 + 输出框
+     * → 没/少内容时浮窗缩到最小省屏，多内容时 180dp 上限 + 内部滚动
+     */
+    private fun updateFloatHeightAfterRender() {
+        val ocrScroll = ocrResultScroll ?: return
+        val contentRoot = root ?: return
+        val p = params ?: return
+        ocrScroll.post {
+            val container = ocrResultContainer ?: return@post
+            // 等布局完成后再测量（post 到下一帧）
+            val contentH = if (container.height > 0) container.height else container.measuredHeight
+            // 上限 180dp（多匹配时滚动），下限 60dp（无内容也保留可见区域）
+            val desired = contentH.coerceIn(dp(60), dp(180))
+            val olp = ocrScroll.layoutParams as? LinearLayout.LayoutParams ?: return@post
+            if (olp.height != desired) {
+                olp.height = desired
+                ocrScroll.layoutParams = olp
+            }
+            // 浮窗总高同步
+            val greenH = ocrRecognizeHeight
+            val targetH = dp(30) + dp(36) + greenH + desired
+            if (p.height != targetH) {
+                p.height = targetH
+                windowManager.updateViewLayout(contentRoot, p)
+            }
         }
     }
 
