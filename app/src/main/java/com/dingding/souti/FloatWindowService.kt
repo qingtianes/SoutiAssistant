@@ -187,7 +187,7 @@ class FloatWindowService : Service() {
             isVerticalScrollBarEnabled = true
             scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
             addView(matchContainer)
-            // ★ 固定高度 dp(280)（不要 weight=1，否则某些 targetSdk 下 LinearLayout 会让 matchScroll wrap 高度挤下方）
+            // ★ 完全固定 dp(280) 高度（不能加 weight=1，否则 LinearLayout 用 weight 算高度，忽略 explicit 值）
             //    内容超出时 ScrollView 内部滚动，绝不挤压 taskBar + recognizeArea
             layoutParams = LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, dp(280)
