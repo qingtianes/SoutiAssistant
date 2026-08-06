@@ -338,6 +338,12 @@ class FloatWindowService : Service() {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8), dp(6), dp(8), dp(6))
             setBackgroundColor(Color.parseColor("#22000000"))
+            // ★ 显式 MATCH_PARENT 宽（不被 ScrollView 默认 WRAP_CONTENT 干扰）
+            //    卡片 layoutParams.width = MATCH_PARENT 才能正确跟随 resultContainer 宽度
+            layoutParams = FrameLayout.LayoutParams(
+                FrameLayout.LayoutParams.MATCH_PARENT,
+                FrameLayout.LayoutParams.WRAP_CONTENT
+            )
             val hint = TextView(this@FloatWindowService).apply {
                 text = "（OCR 结果将在这里显示）"
                 textSize = 12f
