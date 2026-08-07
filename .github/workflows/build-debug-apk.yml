@@ -27,6 +27,11 @@ jobs:
           echo "GRADLE_HOME=$RUNNER_TEMP/gradle-8.13" >> $GITHUB_ENV
           echo "$RUNNER_TEMP/gradle-8.13/bin" >> $GITHUB_PATH
           gradle --version
+      # ★ 临时屏蔽阿里云镜像（CI 跑的时候 aliyun 502 Bad Gateway，Gradle 把整个 maven 配置 disable，连带官方源也用不了）
+      #    CI 在 AWS 用 Google Maven + Maven Central 更快更稳
+      #    本地 Windows 不动这个文件，aliyun 镜像照常生效
+      - name: Disable Aliyun mirror for CI
+        run: sed -i 's|^        maven { url = uri("https://maven.aliyun.com.*|# CI: aliyun disabled|' settings.gradle.kts
       - name: Build debug APK (multi-ABI)
         run: gradle assembleDebug --no-daemon
       - name: Upload to v0.5 release (replace old x86_64-only APK)
