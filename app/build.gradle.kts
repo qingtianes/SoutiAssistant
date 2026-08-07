@@ -17,6 +17,13 @@ android {
         targetSdk = 33
         versionCode = 1
         versionName = "1.0"
+        // ★ ABI 包含主流架构（之前只生成 x86_64，鸿蒙 ARM64 手机装不上）
+        //    arm64-v8a = 麒麟芯片（鸿蒙/现代安卓）
+        //    armeabi-v7a = 旧安卓
+        //    x86_64 = 模拟器/部分平板
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
+        }
     }
 
     buildTypes {
