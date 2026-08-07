@@ -19,10 +19,16 @@ jobs:
         with:
           android-version: '34'
           components: 'platform-tools,build-tools,ndk'
-      - name: Grant execute permission for gradlew
-        run: chmod +x gradlew
+      # 项目里没 gradlew wrapper，直接装 gradle 到临时目录用系统命令编译
+      - name: Install Gradle 8.13
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.13-bin.zip -O gradle.zip
+          unzip -q gradle.zip
+          echo "GRADLE_HOME=$RUNNER_TEMP/gradle-8.13" >> $GITHUB_ENV
+          echo "$RUNNER_TEMP/gradle-8.13/bin" >> $GITHUB_PATH
+          gradle --version
       - name: Build debug APK (multi-ABI)
-        run: ./gradlew assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon
       - name: Upload to v0.5 release (replace old x86_64-only APK)
         uses: softprops/action-gh-release@v2
         with:
