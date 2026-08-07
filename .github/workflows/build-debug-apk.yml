@@ -21,20 +21,19 @@ jobs:
       # 项目里没 gradlew wrapper，直接装 gradle 到临时目录用系统命令编译
       - name: Install Gradle 8.13
         run: |
-          wget -q https://services.gradle.org/distributions/gradle-8.13-bin.zip -O gradle.zip
-          unzip -q gradle.zip
-          echo "GRADLE_HOME=$RUNNER_TEMP/gradle-8.13" >> $GITHUB_ENV
-          echo "$RUNNER_TEMP/gradle-8.13/bin" >> $GITHUB_PATH
-          gradle --version
-      # ★ 临时屏蔽阿里云镜像（CI 跑的时候 aliyun 502 Bad Gateway，Gradle 把整个 maven 配置 disable，连带官方源也用不了）
-      #    CI 在 AWS 用 Google Maven + Maven Central 更快更稳
-      #    本地 Windows 不动这个文件，aliyun 镜像照常生效
+          # 加 -v 让 wget 打印下载信息，确认拿到的就是 8.13-bin.zip
+          wget -v https://services.gradle.org/distributions/gradle-8.13-bin.zip -O gradle.zip 2>&1 | grep -E "HTTP|saved"
+          unzip -o gradle.zip
+          # sanity check：解压出来的目录就是 gradle-8.13
+          ls -d gradle-8.13 || (echo "UNZIP FAILED" && ls -la && exit 1)
+          $RUNNER_TEMP/gradle-8.13/bin/gradle --version
       - name: Disable Aliyun mirror for CI
         run: |
           # 用 @ 作 sed 分隔符（替换内容里没 @，避免 | 跟 sed 分隔符冲突）
           sed -i 's@^        maven { url = uri("https://maven.aliyun.com.*@// CI: aliyun disabled@' settings.gradle.kts
       - name: Build debug APK (multi-ABI)
-        run: gradle assembleDebug --no-daemon
+        # ★ 用绝对路径调 gradle（不用 PATH，避免 Ubuntu 预装 gradle 9.6.1 抢走）
+        run: $RUNNER_TEMP/gradle-8.13/bin/gradle assembleDebug --no-daemon
       - name: Upload to v0.5 release (replace old x86_64-only APK)
         uses: softprops/action-gh-release@v2
         with:
