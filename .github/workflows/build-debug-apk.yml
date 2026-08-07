@@ -23,6 +23,14 @@ jobs:
         run: chmod +x gradlew
       - name: Build debug APK (multi-ABI)
         run: ./gradlew assembleDebug --no-daemon
+      - name: Upload to v0.5 release (replace old x86_64-only APK)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.5-floatwindow-modules
+          files: app/build/outputs/apk/debug/app-debug.apk
+          overwrite: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
