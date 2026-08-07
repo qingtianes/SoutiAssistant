@@ -30,7 +30,8 @@ jobs:
       #    CI 在 AWS 用 Google Maven + Maven Central 更快更稳
       #    本地 Windows 不动这个文件，aliyun 镜像照常生效
       - name: Disable Aliyun mirror for CI
-        run: sed -i 's|^        maven { url = uri("https://maven.aliyun.com.*|# CI: aliyun disabled|' settings.gradle.kts
+        run: |
+          sed -i 's|^        maven { url = uri("https://maven.aliyun.com.*|# CI: aliyun disabled|' settings.gradle.kts
       - name: Build debug APK (multi-ABI)
         run: gradle assembleDebug --no-daemon
       - name: Upload to v0.5 release (replace old x86_64-only APK)
