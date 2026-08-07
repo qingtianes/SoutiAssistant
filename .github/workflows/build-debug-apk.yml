@@ -1,5 +1,9 @@
 name: Build Debug APK
 
+# ★ softprops/action-gh-release@v2 需要 contents: write 才能上传 asset（默认 GITHUB_TOKEN 是 read-only）
+permissions:
+  contents: write
+
 on:
   push:
     branches: [main]
