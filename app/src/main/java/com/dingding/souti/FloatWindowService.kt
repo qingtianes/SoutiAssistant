@@ -1109,12 +1109,23 @@ class FloatWindowService : Service() {
                     Log.w("FloatWindow", "读屏: addOnFailureListener 触发 ${e.javaClass.simpleName}: ${e.message}")
                     screenReadOcrInProgress = false  // 解锁
                     if (mySeq != ocrSeq) return@addOnFailureListener
-                    // ★ 详细错误日志（带完整 stack trace）+ 友好提示
+                    // ★ ★ ★ 详细错误日志（带完整 stack trace）+ 友好提示 ★ ★ ★
+                    //    之前 OCR 失败用户看不到 logcat，现在把异常信息直接显示在小窗预览里 + Toast，
+                    //    截图发我我立刻能看到根因，不用跑 logcat
                     Log.e("FloatWindow", "读屏 OCR 失败: ${e.javaClass.simpleName}: ${e.message}", e)
-                    val errMsg = e.message?.take(40) ?: e.javaClass.simpleName
+                    // ★ 把异常写到文件（用户可以从 app 内部打开查看）
+                    try {
+                        val logFile = java.io.File(cacheDir, "ocr_errors.log")
+                        val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.CHINA).format(java.util.Date())
+                        logFile.appendText("[$ts] ${e.javaClass.name}: ${e.message}\n${android.util.Log.getStackTraceString(e)}\n\n")
+                    } catch (_: Exception) {}
+                    val stackHead = e.stackTrace.take(6).joinToString(" | ") { "${it.className.substringAfterLast('.')}.${it.methodName}" }
+                    val errMsg = "${e.javaClass.simpleName}: ${e.message?.take(35) ?: "未知"}"
                     serviceOcrHandler.post {
                         screenReadStatusText?.text = "✕ OCR 失败"
-                        screenReadOcrPreview?.text = "$errMsg\n查看logcat搜 'FloatWindow' 看详细"
+                        screenReadOcrPreview?.text = "${errMsg}\n${stackHead}\n看截图发给开发者"
+                        // ★ Toast 显示简要错误（用户不用进 app 设置就能看到）
+                        android.widget.Toast.makeText(this@FloatWindowService, "OCR失败: $errMsg", android.widget.Toast.LENGTH_LONG).show()
                     }
                 }
             // ★ 关键修复：不在 process 调用后立即 recycle ocrBitmap！
