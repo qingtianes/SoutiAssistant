@@ -1096,7 +1096,7 @@ class FloatWindowService : Service() {
             Log.d("FloatWindow", "读屏: process() 调用 mySeq=$mySeq")
             serviceRecognizer.process(inputImage)
                 .addOnSuccessListener { result ->
-                    Log.d("FloatWindow", "读屏: addOnSuccessListener 触发 text.length=${result.length} mySeq=$mySeq ocrSeq=$ocrSeq")
+                    Log.d("FloatWindow", "读屏: addOnSuccessListener 触发 text.length=${result.text.length} mySeq=$mySeq ocrSeq=$ocrSeq")
                     screenReadOcrInProgress = false  // 解锁
                     if (mySeq != ocrSeq) return@addOnSuccessListener
                     if (result.text == lastScreenReadText) return@addOnSuccessListener
