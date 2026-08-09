@@ -667,13 +667,21 @@ class FloatWindowService : Service() {
      * Service 直接 OCR（复用已授权的 MediaProjection 句柄，不弹授权）
      */
     private val serviceOcrHandler = Handler(Looper.getMainLooper())
-    private val serviceRecognizer by lazy {
+    // ★ 改成 var lateinit：每次读屏模式启动时 dispose 旧的、new 新的（避免之前模式残留状态导致 "Failed to run text recognizer"）
+    private var serviceRecognizer: com.google.mlkit.vision.text.TextRecognizer =
         TextRecognition.getClient(
             com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions.Builder().build()
         )
-    }
     private var serviceImageReader: android.media.ImageReader? = null
     private var serviceVirtualDisplay: android.hardware.display.VirtualDisplay? = null
+
+    /** 重新创建 ML Kit 识别器（读屏模式启动时调用，清除之前模式残留状态） */
+    private fun recreateServiceRecognizer() {
+        try { serviceRecognizer.close() } catch (_: Exception) {}
+        serviceRecognizer = TextRecognition.getClient(
+            com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions.Builder().build()
+        )
+    }
 
     private fun startOcrInService(input: EditText, searchBtn: Button, hint: TextView, rect: android.graphics.Rect) {
         val projection = OcrBridge.mediaProjection ?: return
@@ -856,6 +864,8 @@ class FloatWindowService : Service() {
         if (screenReadActive) return
         screenReadActive = true
         Log.d("FloatWindow", "startScreenRead: 读屏模式启动")
+        // ★ 重建 ML Kit 识别器（避免之前模式残留状态导致"Failed to run text recognizer"——浮窗→读屏切换后必须重建）
+        recreateServiceRecognizer()
         // 1. ★ 记录主浮窗是否在跑（停止读屏时根据这个决定是否恢复）
         floatWasRunningBeforeScreenRead = (root != null)
         // 2. 若浮窗绿框扫描在跑，先停（避免两个扫描循环抢 ImageReader）
@@ -1052,8 +1062,15 @@ class FloatWindowService : Service() {
             lastScreenReadTime = now
             screenReadStatusText?.text = "🔄 OCR 中... diff=${(diffRatio * 100).toInt()}%"
             Log.d("FloatWindow", "读屏: diff=$diffRatio → OCR (${full.width}x${full.height})")
-            // ★ 全屏 OCR（不裁剪）
-            val inputImage = InputImage.fromBitmap(full, 0)
+            // ★ 缩放到 OCR 友好尺寸（Pixel 10 Pro 1280x2856 → ML Kit 中文模型可能拒绝超大图导致 "Failed to run text recognizer"）
+            val targetWidth = 1080
+            val scale = if (full.width > targetWidth) targetWidth.toFloat() / full.width else 1f
+            val ocrBitmap = if (scale < 1f) {
+                val scaled = Bitmap.createScaledBitmap(full, targetWidth, (full.height * scale).toInt(), true)
+                full.recycle()
+                scaled
+            } else full
+            val inputImage = InputImage.fromBitmap(ocrBitmap, 0)
             serviceRecognizer.process(inputImage)
                 .addOnSuccessListener { result ->
                     if (mySeq != ocrSeq) return@addOnSuccessListener
@@ -1066,7 +1083,7 @@ class FloatWindowService : Service() {
                     Log.e("FloatWindow", "读屏 OCR 失败: ${e.message}")
                     screenReadStatusText?.text = "✕ OCR 失败: ${e.message?.take(30) ?: "未知"}"
                 }
-            full.recycle()
+            ocrBitmap.recycle()
         } catch (e: Exception) {
             Log.e("FloatWindow", "读屏截屏失败: ${e.message}")
             screenReadStatusText?.text = "✕ 截屏失败: ${e.message?.take(30) ?: "未知"}"
