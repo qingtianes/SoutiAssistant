@@ -1094,45 +1094,40 @@ class FloatWindowService : Service() {
             val inputImage = InputImage.fromBitmap(ocrBitmap, 0)
             // ★ OCR 互斥锁：process 调用前加锁，避免新一轮 process 抢占后 mySeq 永远丢弃
             screenReadOcrInProgress = true
-            Log.d("FloatWindow", "读屏: process() 调用 mySeq=$mySeq")
-            serviceRecognizer.process(inputImage)
-                .addOnSuccessListener { result ->
-                    Log.d("FloatWindow", "读屏: addOnSuccessListener 触发 text.length=${result.text.length} mySeq=$mySeq ocrSeq=$ocrSeq")
-                    screenReadOcrInProgress = false  // 解锁
-                    if (mySeq != ocrSeq) return@addOnSuccessListener
-                    if (result.text == lastScreenReadText) return@addOnSuccessListener
-                    lastScreenReadText = result.text
-                    // ★ 用 Handler 切到 main thread（ML Kit listener 默认在后台线程，TextView 操作会抛 IllegalStateException）
-                    serviceOcrHandler.post { processScreenReadText(result.text) }
-                }
-                .addOnFailureListener { e ->
-                    Log.w("FloatWindow", "读屏: addOnFailureListener 触发 ${e.javaClass.simpleName}: ${e.message}")
-                    screenReadOcrInProgress = false  // 解锁
-                    if (mySeq != ocrSeq) return@addOnFailureListener
-                    // ★ ★ ★ 详细错误日志（带完整 stack trace）+ 友好提示 ★ ★ ★
-                    //    之前 OCR 失败用户看不到 logcat，现在把异常信息直接显示在小窗预览里 + Toast，
-                    //    截图发我我立刻能看到根因，不用跑 logcat
-                    Log.e("FloatWindow", "读屏 OCR 失败: ${e.javaClass.simpleName}: ${e.message}", e)
-                    // ★ 把异常写到文件（用户可以从 app 内部打开查看）
-                    try {
-                        val logFile = java.io.File(cacheDir, "ocr_errors.log")
-                        val ts = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.CHINA).format(java.util.Date())
-                        logFile.appendText("[$ts] ${e.javaClass.name}: ${e.message}\n${android.util.Log.getStackTraceString(e)}\n\n")
-                    } catch (_: Exception) {}
-                    val stackHead = e.stackTrace.take(6).joinToString(" | ") { "${it.className.substringAfterLast('.')}.${it.methodName}" }
-                    val errMsg = "${e.javaClass.simpleName}: ${e.message?.take(35) ?: "未知"}"
-                    serviceOcrHandler.post {
-                        screenReadStatusText?.text = "✕ OCR 失败"
-                        screenReadOcrPreview?.text = "${errMsg}\n${stackHead}\n看截图发给开发者"
-                        // ★ Toast 显示简要错误（用户不用进 app 设置就能看到）
-                        android.widget.Toast.makeText(this@FloatWindowService, "OCR失败: $errMsg", android.widget.Toast.LENGTH_LONG).show()
+            Log.d("FloatWindow", "读屏: process() 调用 mySeq=$mySeq ocrBitmap=${ocrBitmap.width}x${ocrBitmap.height}")
+            kotlin.runCatching {
+                serviceRecognizer.process(inputImage)
+                    .addOnSuccessListener { result ->
+                        Log.d("FloatWindow", "读屏: addOnSuccessListener 触发 text.length=${result.text.length}")
+                        screenReadOcrInProgress = false  // 解锁
+                        if (mySeq != ocrSeq) return@addOnSuccessListener
+                        if (result.text == lastScreenReadText) return@addOnSuccessListener
+                        lastScreenReadText = result.text
+                        serviceOcrHandler.post { processScreenReadText(result.text) }
                     }
+                    .addOnFailureListener { e ->
+                        Log.w("FloatWindow", "读屏: addOnFailureListener 触发 ${e.javaClass.simpleName}: ${e.message}")
+                        screenReadOcrInProgress = false  // 解锁
+                        if (mySeq != ocrSeq) return@addOnFailureListener
+                        Log.e("FloatWindow", "读屏 OCR 失败: ${e.javaClass.simpleName}: ${e.message}", e)
+                        val causeClass = e.cause?.javaClass?.simpleName ?: "无"
+                        val diagText = "${e.javaClass.simpleName}: ${e.message?.take(30) ?: "?"}\ncause: $causeClass\nOCR输入: ${ocrBitmap.width}x${ocrBitmap.height}"
+                        serviceOcrHandler.post {
+                            screenReadStatusText?.text = "✕ OCR 失败"
+                            screenReadOcrPreview?.text = diagText.take(200)
+                            android.widget.Toast.makeText(this@FloatWindowService, "OCR失败: ${e.javaClass.simpleName}", android.widget.Toast.LENGTH_LONG).show()
+                        }
+                    }
+            }.onFailure { syncEx ->
+                // ★ 同步异常：process() 调用本身抛异常（InputImage 无效 / recognizer 未初始化）
+                Log.e("FloatWindow", "读屏 process() 同步异常: ${syncEx.javaClass.simpleName}: ${syncEx.message}", syncEx)
+                screenReadOcrInProgress = false
+                serviceOcrHandler.post {
+                    screenReadStatusText?.text = "✕ OCR 同步异常"
+                    screenReadOcrPreview?.text = "同步异常: ${syncEx.javaClass.simpleName}: ${syncEx.message?.take(50) ?: "?"}"
+                    android.widget.Toast.makeText(this@FloatWindowService, "OCR同步异常: ${syncEx.message}", android.widget.Toast.LENGTH_LONG).show()
                 }
-            // ★ 关键修复：不在 process 调用后立即 recycle ocrBitmap！
-            //    之前 ocrBitmap.recycle() 在 ML Kit 异步 process 还在跑时回收了 bitmap 像素
-            //    → ML Kit 访问已回收的 bitmap → "Failed to run text recognizer"
-            //    浮窗搜题的 cropped bitmap 也不 recycle（让 GC 自动回收），所以能跑
-            // ocrBitmap.recycle()  ← 删除这一行
+            }
         } catch (e: Exception) {
             Log.e("FloatWindow", "读屏截屏失败: ${e.message}")
             screenReadStatusText?.text = "✕ 截屏失败: ${e.message?.take(30) ?: "未知"}"
