@@ -1218,6 +1218,8 @@ class FloatWindowService : Service() {
             }
         })
         resizeHandle.setOnTouchListener(object : View.OnTouchListener {
+            private var initX = 0   // ★ DOWN 时记录 p.x（修复：之前漏声明，引用 titleBar 类的 initX 报 unresolved）
+            private var initY = 0   // ★ DOWN 时记录 p.y
             private var initW = 0
             private var initH = 0
             private var startTX = 0f
@@ -1225,6 +1227,8 @@ class FloatWindowService : Service() {
             override fun onTouch(v: View, event: MotionEvent): Boolean {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
+                        initX = p.x   // ★ 记录初始 x
+                        initY = p.y
                         initW = p.width
                         initH = p.height
                         startTX = event.rawX
