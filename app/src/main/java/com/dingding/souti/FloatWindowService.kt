@@ -1093,22 +1093,28 @@ class FloatWindowService : Service() {
             val inputImage = InputImage.fromBitmap(ocrBitmap, 0)
             // ★ OCR 互斥锁：process 调用前加锁，避免新一轮 process 抢占后 mySeq 永远丢弃
             screenReadOcrInProgress = true
+            Log.d("FloatWindow", "读屏: process() 调用 mySeq=$mySeq")
             serviceRecognizer.process(inputImage)
                 .addOnSuccessListener { result ->
+                    Log.d("FloatWindow", "读屏: addOnSuccessListener 触发 text.length=${result.length} mySeq=$mySeq ocrSeq=$ocrSeq")
                     screenReadOcrInProgress = false  // 解锁
                     if (mySeq != ocrSeq) return@addOnSuccessListener
                     if (result.text == lastScreenReadText) return@addOnSuccessListener
                     lastScreenReadText = result.text
-                    processScreenReadText(result.text)
+                    // ★ 用 Handler 切到 main thread（ML Kit listener 默认在后台线程，TextView 操作会抛 IllegalStateException）
+                    serviceOcrHandler.post { processScreenReadText(result.text) }
                 }
                 .addOnFailureListener { e ->
+                    Log.w("FloatWindow", "读屏: addOnFailureListener 触发 ${e.javaClass.simpleName}: ${e.message}")
                     screenReadOcrInProgress = false  // 解锁
                     if (mySeq != ocrSeq) return@addOnFailureListener
                     // ★ 详细错误日志（带完整 stack trace）+ 友好提示
                     Log.e("FloatWindow", "读屏 OCR 失败: ${e.javaClass.simpleName}: ${e.message}", e)
                     val errMsg = e.message?.take(40) ?: e.javaClass.simpleName
-                    screenReadStatusText?.text = "✕ OCR 失败"
-                    screenReadOcrPreview?.text = "$errMsg\n查看logcat搜 'FloatWindow' 看详细"
+                    serviceOcrHandler.post {
+                        screenReadStatusText?.text = "✕ OCR 失败"
+                        screenReadOcrPreview?.text = "$errMsg\n查看logcat搜 'FloatWindow' 看详细"
+                    }
                 }
             // ★ 关键修复：不在 process 调用后立即 recycle ocrBitmap！
             //    之前 ocrBitmap.recycle() 在 ML Kit 异步 process 还在跑时回收了 bitmap 像素
