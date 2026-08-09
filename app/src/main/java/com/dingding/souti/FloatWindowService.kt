@@ -91,6 +91,10 @@ class FloatWindowService : Service() {
     private var lastScreenReadText: String = ""
     /** ★ 上次 OCR 时间戳（最小间隔 1.5s，避免 ML Kit 跑太频繁） */
     private var lastScreenReadTime: Long = 0L
+    /** ★ OCR 状态行（"识别中"/"已识别"/"未识别到"） */
+    private var screenReadStatusText: TextView? = null
+    /** ★ OCR 原文预览（截短显示，2 行） */
+    private var screenReadOcrPreview: TextView? = null
     /** 读屏模式扫描循环 Runnable */
     private var screenReadRunnable: Runnable? = null
     /** 读屏小窗最小化后的圆点（📖） */
@@ -1140,12 +1144,31 @@ class FloatWindowService : Service() {
         }
         titleBar.addView(closeBtn)
         win.addView(titleBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)))
+        // ── ★ OCR 状态栏（识别中/已识别/未识别）+ 原文预览（2 行截短）──
+        val statusText = TextView(this).apply {
+            text = "🔄 等待首次识别..."
+            textSize = 11f
+            setTextColor(Color.parseColor("#FAC775"))  // 黄：识别中
+            setPadding(dp(4), dp(2), dp(4), dp(0))
+        }
+        val ocrPreview = TextView(this).apply {
+            text = ""
+            textSize = 9f
+            setTextColor(Color.parseColor("#CCCCCC"))
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(4), dp(0), dp(4), dp(4))
+        }
+        val statusBar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        statusBar.addView(statusText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        statusBar.addView(ocrPreview, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        win.addView(statusBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         // ── 结果区 ScrollView（多题答案列表）──
         val container = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
         }
         container.addView(TextView(this).apply {
-            text = "正在识别屏幕..."
+            text = "（匹配答案将在这里显示）"
             textSize = 11f
             setTextColor(Color.parseColor("#CCCCCC"))  // 透明底用浅灰更清晰
             gravity = Gravity.CENTER
@@ -1187,6 +1210,8 @@ class FloatWindowService : Service() {
         screenReadWindow = win
         screenReadParams = p
         screenReadContainer = container
+        screenReadStatusText = statusText  // ★ OCR 状态行引用
+        screenReadOcrPreview = ocrPreview  // ★ OCR 原文预览引用
         bindScreenReadDragAndResize(win, titleBar, resizeHandle, p)
         Log.d("FloatWindow", "读屏小窗已创建 260x360dp")
     }
@@ -1244,11 +1269,10 @@ class FloatWindowService : Service() {
                         val newH = (initH + dy).coerceIn(dp(240), dp(700))
                         p.width = newW
                         p.height = newH
-                        // ★ END gravity resize：◢ 跟手指移动，窗口右边跟着扩
-                        //    ◢ 屏幕位置 = screenW - p.x，让 ◢ = initTX + dx → p.x = initX - dx
-                        //    窗口左边不动（保持原 initLeft = screenW - initX - initW），右边扩 dx
-                        p.x = initX - dx
-                        p.y = initY + dy
+                        // ★ ◢ 不动版本：p.x/p.y 不变，窗口宽度高度变 → 窗口从右下方扩张/收缩
+                        //    ◢ 是 resize 针点（拖动只改大小不改位置），用户感受：拖右下 = 窗口右下扩
+                        p.x = initX
+                        p.y = initY
                         try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
                     }
                 }
@@ -1605,12 +1629,25 @@ class FloatWindowService : Service() {
     private fun processScreenReadText(text: String) {
         Log.d("FloatWindow", "processScreenReadText 收到: text.length=${text.length} '${text.take(60)}'")
         val container = screenReadContainer ?: return
+        // ★ 同步更新 OCR 状态栏（让用户知道 OCR 是否在工作）
+        screenReadStatusText?.let { st ->
+            if (text.isBlank()) {
+                st.text = "⚠ 未识别到文字"
+                st.setTextColor(Color.parseColor("#FFCCCC"))  // 浅红
+            } else {
+                st.text = "✓ 已识别 ${text.length} 字"
+                st.setTextColor(Color.parseColor("#9FE1CB"))  // 浅绿
+            }
+        }
+        // ★ OCR 原文预览（2 行截短）
+        screenReadOcrPreview?.let { pv ->
+            pv.text = text.take(150).replace("\n", " ").replace(Regex("\\s+"), " ").trim()
+        }
         if (text.isBlank()) {
             // OCR 成功但没文字（屏幕纯色/低对比）→ 提示用户，便于区分"OCR 在跑 vs 没跑"
             container.removeAllViews()
             container.addView(TextView(this).apply {
-                // ★ 用 this.text 显式指定 TextView 的 text 属性（apply 块里默认 text 指向外层 val 参数，会报 val reassign）
-                this.text = "（未识别到文字内容）"
+                this.text = "（屏幕无文字内容）"
                 textSize = 11f
                 setTextColor(Color.parseColor("#CCCCCC"))
                 gravity = Gravity.CENTER
