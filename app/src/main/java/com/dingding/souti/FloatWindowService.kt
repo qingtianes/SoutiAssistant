@@ -1073,9 +1073,10 @@ class FloatWindowService : Service() {
             lastScreenReadTime = now
             screenReadStatusText?.text = "🔄 OCR 中... diff=${(diffRatio * 100).toInt()}%"
             Log.d("FloatWindow", "读屏: diff=$diffRatio → OCR (${full.width}x${full.height})")
-            // ★ 缩放到 ML Kit 中文识别器友好尺寸（同时限制宽高，Pixel 10 Pro 1280x2856 → 1080x1920）
-            val targetWidth = 1080
-            val targetHeight = 1920
+            // ★ 缩放到 ML Kit 中文识别器推荐尺寸 720x1280（之前 1080x1920 仍然太大导致 "Failed to run text recognizer"）
+            //    浮窗搜题 OCR 用小 bitmap（裁剪绿框 ~300x100）能跑 → 验证 bitmap 大小是关键限制
+            val targetWidth = 720
+            val targetHeight = 1280
             val scale = minOf(
                 targetWidth.toFloat() / full.width,
                 targetHeight.toFloat() / full.height
