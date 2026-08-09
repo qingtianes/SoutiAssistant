@@ -1606,7 +1606,8 @@ class FloatWindowService : Service() {
             // OCR 成功但没文字（屏幕纯色/低对比）→ 提示用户，便于区分"OCR 在跑 vs 没跑"
             container.removeAllViews()
             container.addView(TextView(this).apply {
-                text = "（未识别到文字内容）"
+                // ★ 用 this.text 显式指定 TextView 的 text 属性（apply 块里默认 text 指向外层 val 参数，会报 val reassign）
+                this.text = "（未识别到文字内容）"
                 textSize = 11f
                 setTextColor(Color.parseColor("#CCCCCC"))
                 gravity = Gravity.CENTER
