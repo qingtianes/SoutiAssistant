@@ -1097,8 +1097,11 @@ class FloatWindowService : Service() {
                 }
                 .addOnFailureListener { e ->
                     if (mySeq != ocrSeq) return@addOnFailureListener
-                    Log.e("FloatWindow", "读屏 OCR 失败: ${e.message}")
-                    screenReadStatusText?.text = "✕ OCR 失败: ${e.message?.take(30) ?: "未知"}"
+                    // ★ 详细错误日志（带完整 stack trace）+ 友好提示
+                    Log.e("FloatWindow", "读屏 OCR 失败: ${e.javaClass.simpleName}: ${e.message}", e)
+                    val errMsg = e.message?.take(40) ?: e.javaClass.simpleName
+                    screenReadStatusText?.text = "✕ OCR 失败"
+                    screenReadOcrPreview?.text = "$errMsg\n查看logcat搜 'FloatWindow' 看详细"
                 }
             ocrBitmap.recycle()
         } catch (e: Exception) {
