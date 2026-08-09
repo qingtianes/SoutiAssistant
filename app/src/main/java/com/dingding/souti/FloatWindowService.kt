@@ -994,6 +994,23 @@ class FloatWindowService : Service() {
             )
             full.copyPixelsFromBuffer(buffer)
             image.close()
+            // ★ 关键：截屏把答案小窗自己也截进去了！涂白小窗区域，
+            //    否则 (1) OCR 识别到小窗文字"读屏搜题/正在识别..."当成题目 (2) 滚动检测 diff 永远 > 0（涂白后排除）
+            val win = screenReadWindow
+            if (win != null) {
+                val loc = IntArray(2)
+                win.getLocationOnScreen(loc)
+                val left = loc[0].coerceAtLeast(0)
+                val top = loc[1].coerceAtLeast(0)
+                val right = (loc[0] + win.width).coerceAtMost(full.width)
+                val bottom = (loc[1] + win.height).coerceAtMost(full.height)
+                if (right > left && bottom > top) {
+                    val canvas = android.graphics.Canvas(full)
+                    val whitePaint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE }
+                    canvas.drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), whitePaint)
+                    Log.d("FloatWindow", "读屏: 已涂白小窗区域 [$left,$top,$right,$bottom]")
+                }
+            }
             // ★ 滚动检测：缩小成 32x64 灰度近似图，与上一帧 diff
             val thumb = Bitmap.createScaledBitmap(full, 32, 64, false)
             val diffRatio = computeFrameDiff(thumb, lastFrameThumb)
@@ -1061,8 +1078,9 @@ class FloatWindowService : Service() {
         val win = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#66000000"))  // 40% 不透明黑（背景几乎透明，屏幕内容若隐若现）
+                setColor(Color.parseColor("#44000000"))  // 26% 不透明黑（背景几乎透明，屏幕内容清晰可见）
                 cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), Color.parseColor("#33FFFFFF"))  // 1dp 白色细边框（微弱轮廓，避免完全看不见）
             }
             setPadding(dp(6), dp(4), dp(6), dp(4))
         }
@@ -1188,7 +1206,8 @@ class FloatWindowService : Service() {
                     MotionEvent.ACTION_MOVE -> {
                         val dx = (event.rawX - startTX).toInt()
                         val dy = (event.rawY - startTY).toInt()
-                        p.x = initX + dx
+                        // ★ gravity = TOP|END 下：p.x 是相对右边缘的距离，所以手指向右 dx>0 应让 p.x 减少（窗口向右移）
+                        p.x = initX - dx
                         p.y = initY + dy
                         try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
                     }
@@ -1277,8 +1296,9 @@ class FloatWindowService : Service() {
         val win = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#66000000"))
+                setColor(Color.parseColor("#44000000"))  // 26% 不透明黑
                 cornerRadius = dp(12).toFloat()
+                setStroke(dp(1), Color.parseColor("#33FFFFFF"))
             }
             setPadding(dp(6), dp(4), dp(6), dp(4))
         }
