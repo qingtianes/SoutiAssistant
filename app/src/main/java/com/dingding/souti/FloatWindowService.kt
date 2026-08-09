@@ -1016,7 +1016,8 @@ class FloatWindowService : Service() {
             val diffRatio = computeFrameDiff(thumb, lastFrameThumb)
             lastFrameThumb?.recycle()
             lastFrameThumb = thumb
-            if (diffRatio > 0.12f) {
+            // ★ 阈值放宽到 0.30：之前 0.12 太敏感（状态栏时钟跳动+系统动画+压缩噪声 → 稳定帧数永远=0 → OCR 从不触发）
+            if (diffRatio > 0.30f) {
                 // 内容在动（滚动中）→ 冻结输出，不 OCR
                 stableFrameCount = 0
                 Log.d("FloatWindow", "读屏: 滚动中 diff=$diffRatio 冻结")
@@ -1024,12 +1025,13 @@ class FloatWindowService : Service() {
                 return
             }
             stableFrameCount++
-            if (stableFrameCount < 2) {
-                Log.d("FloatWindow", "读屏: 稳定帧 ${stableFrameCount}/2 等待")
+            // ★ 稳定帧数从 2 减到 1（更快触发 OCR；阈值放宽后误判率低）
+            if (stableFrameCount < 1) {
+                Log.d("FloatWindow", "读屏: 稳定帧 ${stableFrameCount}/1 等待")
                 full.recycle()
                 return
             }
-            Log.d("FloatWindow", "读屏: 静止 diff=$diffRatio 开始 OCR")
+            Log.d("FloatWindow", "读屏: 静止 diff=$diffRatio 开始 OCR (${full.width}x${full.height})")
             // ★ 全屏 OCR（不裁剪）
             val inputImage = InputImage.fromBitmap(full, 0)
             serviceRecognizer.process(inputImage)
@@ -1231,8 +1233,15 @@ class FloatWindowService : Service() {
                     MotionEvent.ACTION_MOVE -> {
                         val dx = (event.rawX - startTX).toInt()
                         val dy = (event.rawY - startTY).toInt()
-                        p.width = (initW + dx).coerceIn(dp(180), dp(500))
-                        p.height = (initH + dy).coerceIn(dp(240), dp(700))
+                        val newW = (initW + dx).coerceIn(dp(180), dp(500))
+                        val newH = (initH + dy).coerceIn(dp(240), dp(700))
+                        p.width = newW
+                        p.height = newH
+                        // ★ END gravity resize：让 ◢ 跟着手指移动，窗口右边跟着扩（而不是左边扩）
+                        //    ◢ 物理位置 = 屏幕右 - p.x - p.width，手指向右 dx → ◢ 应向右移 = p.x 减少
+                        //    推导：p.x = initX + initW - dx - newW
+                        p.x = initX + initW - dx - newW
+                        p.y = initY + dy
                         try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
                     }
                 }
@@ -1587,10 +1596,22 @@ class FloatWindowService : Service() {
      * - 无匹配时小窗内显示提示
      */
     private fun processScreenReadText(text: String) {
-        if (text.isBlank()) return
+        Log.d("FloatWindow", "processScreenReadText 收到: text.length=${text.length} '${text.take(60)}'")
+        val container = screenReadContainer ?: return
+        if (text.isBlank()) {
+            // OCR 成功但没文字（屏幕纯色/低对比）→ 提示用户，便于区分"OCR 在跑 vs 没跑"
+            container.removeAllViews()
+            container.addView(TextView(this).apply {
+                text = "（未识别到文字内容）"
+                textSize = 11f
+                setTextColor(Color.parseColor("#CCCCCC"))
+                gravity = Gravity.CENTER
+                setPadding(dp(4), dp(16), dp(4), dp(16))
+            })
+            return
+        }
         val cleaned = text.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
         Log.d("FloatWindow", "读屏 OCR(${cleaned.length}字): ${cleaned.take(80)}...")
-        val container = screenReadContainer ?: return
         container.removeAllViews()
         if (cleaned.length <= 300) {
             // ── 单题模式：整段作为查询词 ──
