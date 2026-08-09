@@ -1103,7 +1103,11 @@ class FloatWindowService : Service() {
                     screenReadStatusText?.text = "✕ OCR 失败"
                     screenReadOcrPreview?.text = "$errMsg\n查看logcat搜 'FloatWindow' 看详细"
                 }
-            ocrBitmap.recycle()
+            // ★ 关键修复：不在 process 调用后立即 recycle ocrBitmap！
+            //    之前 ocrBitmap.recycle() 在 ML Kit 异步 process 还在跑时回收了 bitmap 像素
+            //    → ML Kit 访问已回收的 bitmap → "Failed to run text recognizer"
+            //    浮窗搜题的 cropped bitmap 也不 recycle（让 GC 自动回收），所以能跑
+            // ocrBitmap.recycle()  ← 删除这一行
         } catch (e: Exception) {
             Log.e("FloatWindow", "读屏截屏失败: ${e.message}")
             screenReadStatusText?.text = "✕ 截屏失败: ${e.message?.take(30) ?: "未知"}"
