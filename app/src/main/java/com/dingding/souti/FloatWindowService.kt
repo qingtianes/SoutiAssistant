@@ -122,7 +122,8 @@ class FloatWindowService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, createNotification())
             }
-            showFloatWindow()
+            // ★ 不再在 onCreate 自动 showFloatWindow（之前会导致点读屏搜题时主浮窗"闪一下"才被移除）
+            //    改为：ACTION_START_SCAN 处理时按需显示主浮窗（用户主动启动浮窗搜题时才显示）
         } catch (e: Throwable) {
             Log.e("FloatWindow", "Service 启动失败", e)
             // ★ 崩溃时清理 prefs + 写错误信息到 prefs，让主页能显示
@@ -2146,6 +2147,8 @@ class FloatWindowService : Service() {
                     }
                     startActivity(authIntent)
                 } else {
+                    // ★ 已授权：按需显示主浮窗（onCreate 不再自动显示，避免读屏模式被影响）
+                    if (root == null) showFloatWindow()
                     startContinuousScan()
                 }
             }
@@ -2245,11 +2248,18 @@ class FloatWindowService : Service() {
                     if (OcrBridge.screenRead) {
                         Log.d("FloatWindow", "Service 创建 MediaProjection 成功（读屏模式），自动开始读屏扫描")
                         OcrBridge.screenRead = false  // 一次性标记，消费掉
+                        // ★ 立即移除主浮窗（避免"闪一下"：授权完成瞬间若主浮窗已存在需立刻隐藏）
+                        root?.let {
+                            try { windowManager.removeView(it) } catch (_: Exception) {}
+                            Log.d("FloatWindow", "读屏模式：授权完成立即隐藏主浮窗")
+                        }
                         startScreenRead()
                         return START_STICKY
                     }
                     Log.d("FloatWindow", "Service 创建 MediaProjection 成功，自动开始扫描")
                     startContinuousScan()
+                    // ★ 按需显示主浮窗（首次授权后用户点浮窗搜题要看到主浮窗）
+                    if (root == null) showFloatWindow()
                     // ★ 启动成功才改 UI 文字；如果 scan 没启动成功，OCR 失败时回滚
                     if (continuousScanning) {
                         ocrTopSwitch?.text = "⏹停止扫描"
