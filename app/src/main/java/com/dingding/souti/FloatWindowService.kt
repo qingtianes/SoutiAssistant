@@ -85,10 +85,12 @@ class FloatWindowService : Service() {
     private var screenReadParams: WindowManager.LayoutParams? = null
     /** 读屏模式答案列表容器（小窗内的 ScrollView 内容区） */
     private var screenReadContainer: LinearLayout? = null
-    /** 读屏模式滚动检测：上一帧缩略图 */
+    /** 读屏模式滚动检测：上一帧缩略图（已废弃：滚动检测在中文整屏场景太敏感反误判，去掉了） */
     private var lastFrameThumb: Bitmap? = null
-    /** 读屏模式连续静止帧计数（≥2 才 OCR，避免滚动中误识别） */
-    private var stableFrameCount: Int = 0
+    /** ★ 上次 OCR 文字（去重：文字未变不重复渲染） */
+    private var lastScreenReadText: String = ""
+    /** ★ 上次 OCR 时间戳（最小间隔 1.5s，避免 ML Kit 跑太频繁） */
+    private var lastScreenReadTime: Long = 0L
     /** 读屏模式扫描循环 Runnable */
     private var screenReadRunnable: Runnable? = null
     /** 读屏小窗最小化后的圆点（📖） */
@@ -881,7 +883,9 @@ class FloatWindowService : Service() {
         screenReadRunnable = null
         lastFrameThumb?.recycle()
         lastFrameThumb = null
-        stableFrameCount = 0
+        // ★ 重置文字缓存和时间戳（下次启动 OCR 时重新识别）
+        lastScreenReadText = ""
+        lastScreenReadTime = 0L
         // 移除答案小窗
         val w = screenReadWindow
         if (w != null) {
@@ -941,7 +945,9 @@ class FloatWindowService : Service() {
         screenReadRunnable = null
         lastFrameThumb?.recycle()
         lastFrameThumb = null
-        stableFrameCount = 0
+        // ★ 重置文字缓存和时间戳（下次启动 OCR 时重新识别）
+        lastScreenReadText = ""
+        lastScreenReadTime = 0L
     }
 
     /** 确保长期 VirtualDisplay + ImageReader 存在（浮窗模式已创建则复用） */
@@ -1016,27 +1022,24 @@ class FloatWindowService : Service() {
             val diffRatio = computeFrameDiff(thumb, lastFrameThumb)
             lastFrameThumb?.recycle()
             lastFrameThumb = thumb
-            // ★ 阈值放宽到 0.30：之前 0.12 太敏感（状态栏时钟跳动+系统动画+压缩噪声 → 稳定帧数永远=0 → OCR 从不触发）
-            if (diffRatio > 0.30f) {
-                // 内容在动（滚动中）→ 冻结输出，不 OCR
-                stableFrameCount = 0
-                Log.d("FloatWindow", "读屏: 滚动中 diff=$diffRatio 冻结")
+            // ★ 简化方案：去掉滚动检测门！原因：中文整屏 + 小字号场景，diff 永远 > 0.30（状态栏时钟+系统动画）
+            //    改为：每帧直接 OCR，仅文字变化时刷新 UI；ML Kit 1.5s 内不重复（性能控制）
+            val now = System.currentTimeMillis()
+            if (now - lastScreenReadTime < 1500) {
+                // 1.5s 内不重复 OCR（性能控制；时间到了才 OCR）
                 full.recycle()
                 return
             }
-            stableFrameCount++
-            // ★ 稳定帧数从 2 减到 1（更快触发 OCR；阈值放宽后误判率低）
-            if (stableFrameCount < 1) {
-                Log.d("FloatWindow", "读屏: 稳定帧 ${stableFrameCount}/1 等待")
-                full.recycle()
-                return
-            }
-            Log.d("FloatWindow", "读屏: 静止 diff=$diffRatio 开始 OCR (${full.width}x${full.height})")
+            lastScreenReadTime = now
+            Log.d("FloatWindow", "读屏: diff=$diffRatio → OCR (${full.width}x${full.height})")
             // ★ 全屏 OCR（不裁剪）
             val inputImage = InputImage.fromBitmap(full, 0)
             serviceRecognizer.process(inputImage)
                 .addOnSuccessListener { result ->
                     if (mySeq != ocrSeq) return@addOnSuccessListener
+                    // ★ 文字去重：识别结果未变不重复渲染（避免 ML Kit 1.5s 内重复调用结果相同却刷新 UI）
+                    if (result.text == lastScreenReadText) return@addOnSuccessListener
+                    lastScreenReadText = result.text
                     processScreenReadText(result.text)
                 }
                 .addOnFailureListener { e ->
@@ -1241,10 +1244,10 @@ class FloatWindowService : Service() {
                         val newH = (initH + dy).coerceIn(dp(240), dp(700))
                         p.width = newW
                         p.height = newH
-                        // ★ END gravity resize：让 ◢ 跟着手指移动，窗口右边跟着扩（而不是左边扩）
-                        //    ◢ 物理位置 = 屏幕右 - p.x - p.width，手指向右 dx → ◢ 应向右移 = p.x 减少
-                        //    推导：p.x = initX + initW - dx - newW
-                        p.x = initX + initW - dx - newW
+                        // ★ END gravity resize：◢ 跟手指移动，窗口右边跟着扩
+                        //    ◢ 屏幕位置 = screenW - p.x，让 ◢ = initTX + dx → p.x = initX - dx
+                        //    窗口左边不动（保持原 initLeft = screenW - initX - initW），右边扩 dx
+                        p.x = initX - dx
                         p.y = initY + dy
                         try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
                     }
