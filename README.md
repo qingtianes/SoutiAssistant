@@ -148,6 +148,18 @@ Studio 步骤：
 2. 同步 Gradle（首次需要几分钟）
 3. Run → app → 选模拟器/真机
 
+### 模拟器环境要求
+
+⚠️ **OCR 功能（浮窗搜题 + 读屏搜题）需要带 Google Play Services 的镜像**：
+
+| 镜像类型 | 浮窗搜题 | 读屏搜题 | 备注 |
+|---|---|---|---|
+| Android Studio 默认镜像（无 GMS） | ❌ OCR 报 "Failed to run text recognizer" | ❌ 同左 | ML Kit 中文模型无法 lazy 下载 |
+| **带 Google Play 的镜像**（推荐）| ✅ 正常 OCR | ✅ 正常 OCR | Studio 创建模拟器时勾选 "Google Play" |
+| 真机（华为/小米等国产机） | ⚠️ 需要装 Google Play 服务 | ⚠️ 同左 | 部分国产 ROM 无 GMS 会失败 |
+
+创建模拟器时：在 AVD Manager → New Virtual Device → 选镜像时**优先选带 "Google Play" 标识的镜像**（如 Pixel 6 Pro API 34 + Google Play），不要选纯 AOSP 镜像。
+
 ## 📝 相关文档
 
 - [开发笔记](开发笔记.md) — 技术方案全链路

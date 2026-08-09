@@ -202,22 +202,26 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
                     Text("⚠ 启动失败：$floatError", fontSize = 10.sp, color = Red)
                 }
                 Spacer(Modifier.height(12.dp))
-                Button(
+Button(
                     onClick = {
                         when {
                             !hasOverlayPermission -> context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
                             floatRunning -> {
                                 // ★ 完全关闭服务：发 ACTION_STOP_SELF（Android 14+ 前台服务必须先 stopForeground）
                                 val stopIntent = Intent(context, FloatWindowService::class.java).apply {
-                    action = FloatWindowService.ACTION_STOP_SELF
-                }
-                context.startService(stopIntent)
-                OcrBridge.mediaProjection = null
-                floatRunning = false
-            }
+                                    action = FloatWindowService.ACTION_STOP_SELF
+                                }
+                                context.startService(stopIntent)
+                                OcrBridge.mediaProjection = null
+                                floatRunning = false
+                            }
                             else -> {
-                                // ★ 启动服务（首次或完全关闭后启动）
-                                context.startForegroundService(Intent(context, FloatWindowService::class.java))
+                                // ★ 启动服务（首次或完全关闭后启动）—— 带 ACTION_START_SCAN 让 Service 立即显示主浮窗
+                                //    之前只用 startForegroundService 不传 action，导致 Service 只做 onCreate 初始化
+                                //    不显示主浮窗（onCreate 已不再自动 showFloatWindow）→ 浮窗"打不开"
+                                context.startForegroundService(Intent(context, FloatWindowService::class.java).apply {
+                                    action = FloatWindowService.ACTION_START_SCAN
+                                })
                                 floatRunning = true
                             }
                         }
