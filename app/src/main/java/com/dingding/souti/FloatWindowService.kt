@@ -97,6 +97,8 @@ class FloatWindowService : Service() {
     private var screenReadOcrPreview: TextView? = null
     /** 读屏模式扫描循环 Runnable */
     private var screenReadRunnable: Runnable? = null
+    /** ★ 读屏模式扫描循环 tick 计数（用于诊断"runnable 是否真的在跑"） */
+    private var captureScreenTick: Int = 0
     /** 读屏小窗最小化后的圆点（📖） */
     private var minimizedScreenReadDot: View? = null
     /** 读屏小窗最小化时保存的位置/尺寸（恢复用） */
@@ -886,6 +888,7 @@ class FloatWindowService : Service() {
         Log.d("FloatWindow", "stopScreenRead: 读屏模式停止")
         screenReadRunnable?.let { scanHandler.removeCallbacks(it) }
         screenReadRunnable = null
+        captureScreenTick = 0  // ★ 重置 tick 计数（下次启动时从 1 开始）
         lastFrameThumb?.recycle()
         lastFrameThumb = null
         // ★ 重置文字缓存和时间戳（下次启动 OCR 时重新识别）
@@ -986,6 +989,10 @@ class FloatWindowService : Service() {
      * 3. diff 大（滚动中）→ 冻结输出；连续稳定 ≥2 帧 → 全屏 OCR
      */
     private fun captureScreenReadFrame() {
+        // ★ 累积 tick 计数（每次调用都更新状态栏，确认 runnable 在跑）
+        captureScreenTick++
+        Log.d("FloatWindow", "读屏 tick #$captureScreenTick（screenReadActive=$screenReadActive, reader=${ocrImageReader != null}）")
+        screenReadStatusText?.text = "💓 第${captureScreenTick}次 tick..."
         val reader = ocrImageReader ?: run {
             Log.w("FloatWindow", "读屏: ocrImageReader == null（VirtualDisplay 未创建）")
             screenReadStatusText?.text = "⚠ VirtualDisplay 未创建"
