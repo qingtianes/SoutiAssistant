@@ -18,4 +18,10 @@ object OcrBridge {
     var pendingRect: Rect = Rect(0, 0, 1, 1)
     /** 是否正在运行 */
     var isRunning: Boolean = false
+    /** ★ 当前运行模式（让 MainActivity 主页能区分显示浮窗搜题/读屏搜题状态） */
+    var currentMode: String = MODE_NONE
+
+    const val MODE_NONE = "none"
+    const val MODE_FLOAT_WINDOW = "floatWindow"
+    const val MODE_SCREEN_READ = "screenRead"
 }

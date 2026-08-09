@@ -806,6 +806,8 @@ class FloatWindowService : Service() {
         }
         if (continuousScanning) return
         continuousScanning = true
+        // ★ 标记当前模式为浮窗搜题（让主页轮询能区分显示）
+        OcrBridge.currentMode = OcrBridge.MODE_FLOAT_WINDOW
         Log.d("FloatWindow", "startContinuousScan: 启动 OCR 循环（每 2 秒，长期 VirtualDisplay）")
         // ★ 创建一次长期 VirtualDisplay + ImageReader（避免每 2 秒创建/释放触发 MediaProjection stop）
         if (ocrVirtualDisplay == null) {
@@ -849,6 +851,8 @@ class FloatWindowService : Service() {
         // ★ 保留 VirtualDisplay + MediaProjection token（用户点"继续"时复用）
         // 只在 ACTION_STOP_SELF / MediaProjection.onStop 时真正释放
         Log.d("FloatWindow", "stopContinuousScan: 暂停扫描（保留 MediaProjection）")
+        // ★ 注意：这里**不重置** currentMode（保留"浮窗搜题"标识，mainActivity 主页能看到）
+        //    真正的 NONE 状态只在 stopScreenRead 或 Service 销毁时设置
     }
 
     // ═══════════════════ 读屏模式（全屏自动识别） ═══════════════════
@@ -863,9 +867,9 @@ class FloatWindowService : Service() {
         }
         if (screenReadActive) return
         screenReadActive = true
+        // ★ 标记当前模式为读屏（让主页轮询能区分显示）
+        OcrBridge.currentMode = OcrBridge.MODE_SCREEN_READ
         Log.d("FloatWindow", "startScreenRead: 读屏模式启动")
-        // ★ 重建 ML Kit 识别器（避免之前模式残留状态导致"Failed to run text recognizer"——浮窗→读屏切换后必须重建）
-        recreateServiceRecognizer()
         // 1. ★ 记录主浮窗是否在跑（停止读屏时根据这个决定是否恢复）
         floatWasRunningBeforeScreenRead = (root != null)
         // 2. 若浮窗绿框扫描在跑，先停（避免两个扫描循环抢 ImageReader）
@@ -895,6 +899,10 @@ class FloatWindowService : Service() {
     private fun stopScreenRead() {
         if (!screenReadActive) return
         screenReadActive = false
+        // ★ 重置模式标记（让主页能正确显示"未开启"状态）
+        if (OcrBridge.currentMode == OcrBridge.MODE_SCREEN_READ) {
+            OcrBridge.currentMode = OcrBridge.MODE_NONE
+        }
         Log.d("FloatWindow", "stopScreenRead: 读屏模式停止")
         screenReadRunnable?.let { scanHandler.removeCallbacks(it) }
         screenReadRunnable = null
@@ -1062,11 +1070,20 @@ class FloatWindowService : Service() {
             lastScreenReadTime = now
             screenReadStatusText?.text = "🔄 OCR 中... diff=${(diffRatio * 100).toInt()}%"
             Log.d("FloatWindow", "读屏: diff=$diffRatio → OCR (${full.width}x${full.height})")
-            // ★ 缩放到 OCR 友好尺寸（Pixel 10 Pro 1280x2856 → ML Kit 中文模型可能拒绝超大图导致 "Failed to run text recognizer"）
+            // ★ 缩放到 ML Kit 中文识别器友好尺寸（同时限制宽高，Pixel 10 Pro 1280x2856 → 1080x1920）
             val targetWidth = 1080
-            val scale = if (full.width > targetWidth) targetWidth.toFloat() / full.width else 1f
+            val targetHeight = 1920
+            val scale = minOf(
+                targetWidth.toFloat() / full.width,
+                targetHeight.toFloat() / full.height
+            )
             val ocrBitmap = if (scale < 1f) {
-                val scaled = Bitmap.createScaledBitmap(full, targetWidth, (full.height * scale).toInt(), true)
+                val scaled = Bitmap.createScaledBitmap(
+                    full,
+                    (full.width * scale).toInt(),
+                    (full.height * scale).toInt(),
+                    true
+                )
                 full.recycle()
                 scaled
             } else full
@@ -2130,6 +2147,7 @@ class FloatWindowService : Service() {
         super.onDestroy()
         continuousScanning = false
         screenReadActive = false
+        OcrBridge.currentMode = OcrBridge.MODE_NONE  // ★ 重置模式标记
         scanHandler.removeCallbacksAndMessages(null)
         OcrBridge.isRunning = false
         // ★ 读屏小窗/圆点清理（防止窗口泄漏）
@@ -2227,6 +2245,7 @@ class FloatWindowService : Service() {
                 Log.d("FloatWindow", "ACTION_STOP_SELF 收到")
                 stopContinuousScan()
                 stopScreenRead()
+                OcrBridge.currentMode = OcrBridge.MODE_NONE  // ★ 重置模式标记
                 // 释放 MediaProjection
                 try {
                     OcrBridge.mediaProjection?.stop()
@@ -2275,6 +2294,7 @@ class FloatWindowService : Service() {
                             // 用户停止录屏时，自动停止 OCR 扫描
                             stopContinuousScan()
                             stopScreenRead()
+                            OcrBridge.currentMode = OcrBridge.MODE_NONE  // ★ 重置模式标记
                             ocrTopSwitch?.text = if (OcrBridge.mediaProjection == null) "🔓授权并扫描" else "🔄开始扫描"
                             statusDot?.let { d -> statusText?.let { t -> updateStatusUi(d, t, scanning = false) } }
                         }

@@ -140,6 +140,7 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
     val context = LocalContext.current
     var hasOverlayPermission by remember { mutableStateOf(Settings.canDrawOverlays(context)) }
     var floatRunning by remember { mutableStateOf(false) }
+    var screenReadRunning by remember { mutableStateOf(false) }
     var floatError by remember { mutableStateOf("") }  // ★ Service 启动失败信息
     // ★ 轮询 Service 真实状态（用 ActivityManager 校验自家服务，Android 14+ 允许）
     LaunchedEffect(Unit) {
@@ -147,13 +148,16 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
         while (true) {
             // Android 14+ 允许自家服务的 getRunningServices（被禁的只是其他应用）
             val actuallyRunning = isServiceRunning(context, FloatWindowService::class.java)
+            // ★ 根据 OcrBridge.currentMode 区分两种模式（避免两种模式互相误显示状态）
+            val mode = OcrBridge.currentMode
+            val newFloatRunning = actuallyRunning && mode == OcrBridge.MODE_FLOAT_WINDOW
+            val newScreenReadRunning = actuallyRunning && mode == OcrBridge.MODE_SCREEN_READ
+            if (floatRunning != newFloatRunning) floatRunning = newFloatRunning
+            if (screenReadRunning != newScreenReadRunning) screenReadRunning = newScreenReadRunning
             // 同步真实状态到 prefs（防止进程 kill 后 prefs 漂移）
             val prefsRunning = prefs.getBoolean("service_running", false)
             if (actuallyRunning != prefsRunning) {
                 prefs.edit().putBoolean("service_running", actuallyRunning).apply()
-            }
-            if (floatRunning != actuallyRunning) {
-                floatRunning = actuallyRunning
             }
             // 同步错误信息（Service 启动成功时它会自动清空）
             val err = prefs.getString("last_error", "") ?: ""
@@ -231,7 +235,11 @@ Button(
                 ) { Text(when { !hasOverlayPermission -> "授权悬浮窗权限"; floatRunning -> "关闭服务（需重新授权）"; else -> "启动服务" }, fontSize = 15.sp) }
             }
         }
-        MenuCard("读屏搜题", "全屏自动识别，答案小窗输出（不挡作答）") {
+        MenuCard(
+            title = "读屏搜题",
+            subtitle = if (screenReadRunning) "运行中：右上角小窗 ✕ 关闭"
+                       else "全屏自动识别，答案小窗输出（不挡作答）"
+        ) {
             // ★ 读屏模式：需要悬浮窗权限 + MediaProjection 授权
             if (!Settings.canDrawOverlays(context)) {
                 // 没有悬浮窗权限 → 引导授权
