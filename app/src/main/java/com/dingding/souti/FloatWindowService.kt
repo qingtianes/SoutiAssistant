@@ -986,13 +986,21 @@ class FloatWindowService : Service() {
      * 3. diff 大（滚动中）→ 冻结输出；连续稳定 ≥2 帧 → 全屏 OCR
      */
     private fun captureScreenReadFrame() {
-        val reader = ocrImageReader ?: return
+        val reader = ocrImageReader ?: run {
+            Log.w("FloatWindow", "读屏: ocrImageReader == null（VirtualDisplay 未创建）")
+            screenReadStatusText?.text = "⚠ VirtualDisplay 未创建"
+            return
+        }
         val mySeq = ++ocrSeq
         val image = try { reader.acquireLatestImage() } catch (e: Exception) {
             Log.e("FloatWindow", "读屏 acquireLatestImage 异常: ${e.message}")
             null
         }
-        if (image == null) return
+        if (image == null) {
+            Log.w("FloatWindow", "读屏: acquireLatestImage == null（ImageReader 没新帧）")
+            screenReadStatusText?.text = "🔄 等待截屏帧..."
+            return
+        }
         try {
             val planes = image.planes
             val buffer = planes[0].buffer
@@ -1005,8 +1013,7 @@ class FloatWindowService : Service() {
             )
             full.copyPixelsFromBuffer(buffer)
             image.close()
-            // ★ 关键：截屏把答案小窗自己也截进去了！涂白小窗区域，
-            //    否则 (1) OCR 识别到小窗文字"读屏搜题/正在识别..."当成题目 (2) 滚动检测 diff 永远 > 0（涂白后排除）
+            // ★ 关键：截屏把答案小窗自己也截进去了！涂白小窗区域
             val win = screenReadWindow
             if (win != null) {
                 val loc = IntArray(2)
@@ -1022,27 +1029,27 @@ class FloatWindowService : Service() {
                     Log.d("FloatWindow", "读屏: 已涂白小窗区域 [$left,$top,$right,$bottom]")
                 }
             }
-            // ★ 滚动检测：缩小成 32x64 灰度近似图，与上一帧 diff
+            // ★ 滚动检测（仅做日志，不阻塞 OCR）
             val thumb = Bitmap.createScaledBitmap(full, 32, 64, false)
             val diffRatio = computeFrameDiff(thumb, lastFrameThumb)
             lastFrameThumb?.recycle()
             lastFrameThumb = thumb
-            // ★ 简化方案：去掉滚动检测门！原因：中文整屏 + 小字号场景，diff 永远 > 0.30（状态栏时钟+系统动画）
-            //    改为：每帧直接 OCR，仅文字变化时刷新 UI；ML Kit 1.5s 内不重复（性能控制）
+            // ★ 状态栏实时显示进度（让用户直观看到 OCR 链路走到哪步）
+            screenReadStatusText?.text = "🔄 截屏 diff=${(diffRatio * 100).toInt()}%"
+            // 时间间隔控制（1.5s 内不重复 OCR）
             val now = System.currentTimeMillis()
             if (now - lastScreenReadTime < 1500) {
-                // 1.5s 内不重复 OCR（性能控制；时间到了才 OCR）
                 full.recycle()
                 return
             }
             lastScreenReadTime = now
+            screenReadStatusText?.text = "🔄 OCR 中... diff=${(diffRatio * 100).toInt()}%"
             Log.d("FloatWindow", "读屏: diff=$diffRatio → OCR (${full.width}x${full.height})")
             // ★ 全屏 OCR（不裁剪）
             val inputImage = InputImage.fromBitmap(full, 0)
             serviceRecognizer.process(inputImage)
                 .addOnSuccessListener { result ->
                     if (mySeq != ocrSeq) return@addOnSuccessListener
-                    // ★ 文字去重：识别结果未变不重复渲染（避免 ML Kit 1.5s 内重复调用结果相同却刷新 UI）
                     if (result.text == lastScreenReadText) return@addOnSuccessListener
                     lastScreenReadText = result.text
                     processScreenReadText(result.text)
@@ -1050,10 +1057,12 @@ class FloatWindowService : Service() {
                 .addOnFailureListener { e ->
                     if (mySeq != ocrSeq) return@addOnFailureListener
                     Log.e("FloatWindow", "读屏 OCR 失败: ${e.message}")
+                    screenReadStatusText?.text = "✕ OCR 失败: ${e.message?.take(30) ?: "未知"}"
                 }
-            full.recycle()  // OCR 异步，recycle 后 ML Kit 内部已复制像素（InputImage.fromBitmap 会拷贝）
+            full.recycle()
         } catch (e: Exception) {
             Log.e("FloatWindow", "读屏截屏失败: ${e.message}")
+            screenReadStatusText?.text = "✕ 截屏失败: ${e.message?.take(30) ?: "未知"}"
         }
     }
 
@@ -1270,10 +1279,13 @@ class FloatWindowService : Service() {
                         val newH = (initH + dy).coerceIn(dp(240), dp(700))
                         p.width = newW
                         p.height = newH
-                        // ★ ◢ 不动版本：p.x/p.y 不变，窗口宽度高度变 → 窗口从右下方扩张/收缩
-                        //    ◢ 是 resize 针点（拖动只改大小不改位置），用户感受：拖右下 = 窗口右下扩
-                        p.x = initX
-                        p.y = initY
+                        // ★ ◢ 跟手指版本（用户期望）+ 窗口左边不动（不"跑走"）：
+                        //    ◢ 屏幕位置 = initTX + dx（跟手指）
+                        //    窗口左边 = initLeft 不动 → p.x = initX - dx
+                        //    验证：窗口右边 = screenW - p.x = screenW - (initX - dx) = initTX + dx ✓ ◢ 跟手指
+                        //          窗口左边 = screenW - p.x - p.width = initLeft ✓ 不动
+                        p.x = initX - dx
+                        p.y = initY + dy
                         try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
                     }
                 }
