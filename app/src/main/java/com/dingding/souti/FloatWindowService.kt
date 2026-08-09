@@ -867,7 +867,7 @@ class FloatWindowService : Service() {
         if (!screenReadActive) return
         screenReadActive = false
         Log.d("FloatWindow", "stopScreenRead: 读屏模式停止")
-        scanHandler.removeCallbacks(screenReadRunnable)
+        screenReadRunnable?.let { scanHandler.removeCallbacks(it) }
         screenReadRunnable = null
         lastFrameThumb?.recycle()
         lastFrameThumb = null
@@ -900,7 +900,7 @@ class FloatWindowService : Service() {
     /** 停止读屏扫描循环（暂停用，保留小窗） */
     private fun stopScreenReadLoop() {
         screenReadActive = false
-        scanHandler.removeCallbacks(screenReadRunnable)
+        screenReadRunnable?.let { scanHandler.removeCallbacks(it) }
         screenReadRunnable = null
         lastFrameThumb?.recycle()
         lastFrameThumb = null
@@ -1232,10 +1232,10 @@ class FloatWindowService : Service() {
             try { windowManager.removeView(it) } catch (_: Exception) {}
         }
         minimizedScreenReadDot = null
-        val x = screenReadSavedRect[0]
-        val y = screenReadSavedRect[1]
-        val w = screenReadSavedRect[2]
-        val h = screenReadSavedRect[3]
+        val savedX = screenReadSavedRect[0]
+        val savedY = screenReadSavedRect[1]
+        val savedW = screenReadSavedRect[2]
+        val savedH = screenReadSavedRect[3]
         // 重建小窗（用 saved 参数）
         val win = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1312,14 +1312,14 @@ class FloatWindowService : Service() {
         handleLp.gravity = Gravity.END
         win.addView(resizeHandle, handleLp)
         val p = WindowManager.LayoutParams(
-            w, h,
+            savedW, savedH,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.END
-            x = x
-            y = y
+            x = savedX
+            y = savedY
         }
         try {
             windowManager.addView(win, p)
