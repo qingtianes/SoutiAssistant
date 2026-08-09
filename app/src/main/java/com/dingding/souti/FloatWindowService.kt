@@ -95,6 +95,8 @@ class FloatWindowService : Service() {
     private var minimizedScreenReadDot: View? = null
     /** 读屏小窗最小化时保存的位置/尺寸（恢复用） */
     private var screenReadSavedRect: IntArray = intArrayOf(0, 0, 0, 0)
+    /** ★ 启动读屏模式时主浮窗是否在跑（用于停止读屏时决定是否恢复主浮窗） */
+    private var floatWasRunningBeforeScreenRead: Boolean = false
 
     override fun onCreate() {
         super.onCreate()
@@ -836,7 +838,7 @@ class FloatWindowService : Service() {
     // 与浮窗搜题共享 MediaProjection / VirtualDisplay / ImageReader / OCR 识别器
     // 区别：识别区域 = 全屏（不裁剪绿框）；滚动防抖；多题切分；输出到独立答案小窗
 
-    /** 启动读屏模式：创建答案小窗 + 开始全屏扫描循环 */
+    /** 启动读屏模式：隐藏主浮窗 + 创建答案小窗 + 开始全屏扫描循环 */
     private fun startScreenRead() {
         if (OcrBridge.mediaProjection == null) {
             Log.w("FloatWindow", "startScreenRead: mediaProjection 为 null！无法启动")
@@ -845,13 +847,21 @@ class FloatWindowService : Service() {
         if (screenReadActive) return
         screenReadActive = true
         Log.d("FloatWindow", "startScreenRead: 读屏模式启动")
-        // 1. 若浮窗绿框扫描在跑，先停（避免两个扫描循环抢 ImageReader）
+        // 1. ★ 记录主浮窗是否在跑（停止读屏时根据这个决定是否恢复）
+        floatWasRunningBeforeScreenRead = (root != null)
+        // 2. 若浮窗绿框扫描在跑，先停（避免两个扫描循环抢 ImageReader）
         if (continuousScanning) stopContinuousScan()
-        // 2. 创建长期 VirtualDisplay + ImageReader（若还没创建）
+        // 3. ★ 隐藏主浮窗（root 还在内存里，只 removeView，不销毁。停止读屏时恢复）
+        if (root != null) {
+            try { windowManager.removeView(root) } catch (_: Exception) {}
+            // 不清 root 引用，停止时直接 addView 回去
+            Log.d("FloatWindow", "读屏模式：主浮窗已隐藏")
+        }
+        // 4. 创建长期 VirtualDisplay + ImageReader（若还没创建）
         ensureScanResources()
-        // 3. 创建独立答案小窗
+        // 5. 创建独立答案小窗
         buildScreenReadWindow()
-        // 4. 启动读屏扫描循环
+        // 6. 启动读屏扫描循环
         screenReadRunnable = object : Runnable {
             override fun run() {
                 if (!screenReadActive) return
@@ -862,7 +872,7 @@ class FloatWindowService : Service() {
         scanHandler.post(screenReadRunnable!!)
     }
 
-    /** 停止读屏模式：停循环 + 移除小窗 + 释放帧缓存 */
+    /** 停止读屏模式：停循环 + 移除小窗 + 释放帧缓存 + 恢复主浮窗 */
     private fun stopScreenRead() {
         if (!screenReadActive) return
         screenReadActive = false
@@ -880,6 +890,33 @@ class FloatWindowService : Service() {
         }
         screenReadParams = null
         screenReadContainer = null
+        // ★ 移除最小化圆点
+        minimizedScreenReadDot?.let {
+            try { windowManager.removeView(it) } catch (_: Exception) {}
+        }
+        minimizedScreenReadDot = null
+        // ★ 恢复主浮窗（如果启动读屏前主浮窗在跑）
+        if (floatWasRunningBeforeScreenRead) {
+            restoreFloatWindow()
+            floatWasRunningBeforeScreenRead = false
+        }
+    }
+
+    /** 恢复主浮窗（提取自 ACTION_SHOW_WINDOW 逻辑，启动/停止读屏时复用） */
+    private fun restoreFloatWindow() {
+        if (root != null) return  // 已存在，不重复添加
+        val p = params ?: return
+        val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
+        root = r
+        buildStandbyUi(r)
+        val searchUi = buildSearchUi(r)
+        searchUi.visibility = View.GONE
+        try {
+            windowManager.addView(r, p)
+            Log.d("FloatWindow", "主浮窗已恢复（读屏模式结束）")
+        } catch (e: Exception) {
+            Log.e("FloatWindow", "主浮窗恢复失败: ${e.message}")
+        }
     }
 
     /** 启动读屏扫描循环（暂停/恢复用） */
@@ -1024,7 +1061,7 @@ class FloatWindowService : Service() {
         val win = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#F2262626"))  // 半透明深灰（约 90% 不透明深底）
+                setColor(Color.parseColor("#66000000"))  // 40% 不透明黑（背景几乎透明，屏幕内容若隐若现）
                 cornerRadius = dp(12).toFloat()
             }
             setPadding(dp(6), dp(4), dp(6), dp(4))
@@ -1087,7 +1124,7 @@ class FloatWindowService : Service() {
         container.addView(TextView(this).apply {
             text = "正在识别屏幕..."
             textSize = 11f
-            setTextColor(Color.parseColor("#AAAAAA"))
+            setTextColor(Color.parseColor("#CCCCCC"))  // 透明底用浅灰更清晰
             gravity = Gravity.CENTER
             setPadding(dp(4), dp(10), dp(4), dp(10))
         })
@@ -1240,7 +1277,7 @@ class FloatWindowService : Service() {
         val win = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
-                setColor(Color.parseColor("#F2262626"))
+                setColor(Color.parseColor("#66000000"))
                 cornerRadius = dp(12).toFloat()
             }
             setPadding(dp(6), dp(4), dp(6), dp(4))
@@ -1296,7 +1333,7 @@ class FloatWindowService : Service() {
         container.addView(TextView(this).apply {
             text = "正在识别屏幕..."
             textSize = 11f
-            setTextColor(Color.parseColor("#AAAAAA"))
+            setTextColor(Color.parseColor("#CCCCCC"))  // 透明底用浅灰更清晰
             gravity = Gravity.CENTER
             setPadding(dp(4), dp(10), dp(4), dp(10))
         })
@@ -1587,33 +1624,32 @@ class FloatWindowService : Service() {
     private fun renderScreenReadMulti(
         container: LinearLayout, questions: List<String>, resultsList: List<List<SearchResult>>
     ) {
-        // 头部提示：识别到 N 题
+        // 头部提示：识别到 N 题（在透明窗口底上用浅绿）
         container.addView(TextView(this).apply {
             text = "📋 识别到 ${questions.size} 道题（滚动切换后自动更新）"
             textSize = 11f
             setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.parseColor("#9FE1CB"))
+            setTextColor(Color.parseColor("#FFFFFF"))  // 白字更醒目
             setPadding(dp(4), dp(2), dp(4), dp(6))
         })
         questions.forEachIndexed { idx, seg ->
             val results = resultsList[idx]
-            // 题号（切分后第一段可能带题号，提取显示）
             val title = "第 ${idx + 1} 题"
             if (results.isEmpty()) {
                 container.addView(TextView(this).apply {
                     text = "$title 未匹配"
                     textSize = 11f
-                    setTextColor(Color.parseColor("#888888"))
+                    setTextColor(Color.parseColor("#CCCCCC"))  // 透明底用浅灰更清晰
                     setPadding(dp(4), dp(4), dp(4), dp(2))
                 })
                 return@forEachIndexed
             }
-            // 每题显示最佳匹配卡片（简化版，只显示答案+相关度）
             val best = results[0]
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = GradientDrawable().apply {
-                    setColor(Color.parseColor("#33222222"))
+                    // ★ 卡片半透明白底：透明窗口底上卡片更醒目
+                    setColor(Color.parseColor("#E6FFFFFF"))
                     cornerRadius = dp(8).toFloat()
                 }
                 setPadding(dp(8), dp(6), dp(8), dp(6))
@@ -1625,13 +1661,13 @@ class FloatWindowService : Service() {
             card.addView(TextView(this).apply {
                 text = title
                 textSize = 10f
-                setTextColor(Color.parseColor("#9FE1CB"))
+                setTextColor(Color.parseColor("#1D9E75"))  // 白底上用深绿更清晰
                 setTypeface(typeface, Typeface.BOLD)
             })
             card.addView(TextView(this).apply {
                 text = best.question.stem.take(40) + if (best.question.stem.length > 40) "..." else ""
                 textSize = 10f
-                setTextColor(Color.parseColor("#DDDDDD"))
+                setTextColor(Color.parseColor("#222222"))  // 白底上用深灰更清晰
                 maxLines = 2
             })
             if (best.question.answer.isNotBlank()) {
@@ -1639,13 +1675,13 @@ class FloatWindowService : Service() {
                     text = "✔ ${best.question.answer}"
                     textSize = 13f
                     setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(Color.parseColor("#1D9E75"))
+                    setTextColor(Color.parseColor("#1D9E75"))  // 答案保持深绿
                 })
             }
             card.addView(TextView(this).apply {
                 text = "相关度 ${best.score}"
                 textSize = 9f
-                setTextColor(Color.parseColor("#888888"))
+                setTextColor(Color.parseColor("#666666"))  // 白底上用中灰
             })
             container.addView(card)
         }
@@ -1659,7 +1695,7 @@ class FloatWindowService : Service() {
             container.addView(TextView(this).apply {
                 text = "未匹配到题库题目"
                 textSize = 11f
-                setTextColor(Color.parseColor("#888888"))
+                setTextColor(Color.parseColor("#CCCCCC"))  // 透明底用浅灰更清晰
                 gravity = Gravity.CENTER
                 setPadding(dp(4), dp(16), dp(4), dp(16))
             })
@@ -2059,16 +2095,7 @@ class FloatWindowService : Service() {
                     restoreFromDot()
                     return START_STICKY
                 }
-                if (this.root == null && params != null) {
-                    val r = FrameLayout(this).apply { setBackgroundColor(Color.TRANSPARENT) }
-                    this.root = r
-                    buildStandbyUi(r)
-                    val searchUi = buildSearchUi(r)
-                    searchUi.visibility = View.GONE
-                    try {
-                        windowManager.addView(r, params)
-                    } catch (_: Exception) {}
-                }
+                restoreFloatWindow()
             }
             ACTION_STOP_SELF -> {
                 // ★ Android 14+ 前台服务必须在 stopService 之前 stopForeground（否则 onDestroy 不触发）
