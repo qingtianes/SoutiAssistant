@@ -89,8 +89,10 @@ class FloatWindowService : Service() {
     private var lastFrameThumb: Bitmap? = null
     /** ★ 上次 OCR 文字（去重：文字未变不重复渲染） */
     private var lastScreenReadText: String = ""
-    /** ★ 上次 OCR 时间戳（最小间隔 1.5s，避免 ML Kit 跑太频繁） */
+    /** ★ 上次 OCR 时间戳（最小间隔，避免 ML Kit 跑太频繁） */
     private var lastScreenReadTime: Long = 0L
+    /** ★ OCR 互斥锁（process 在跑时不触发新一轮，避免异步回调 mySeq 永远被丢弃） */
+    private var screenReadOcrInProgress: Boolean = false
     /** ★ OCR 状态行（"识别中"/"已识别"/"未识别到"） */
     private var screenReadStatusText: TextView? = null
     /** ★ OCR 原文预览（截短显示，2 行） */
@@ -903,6 +905,7 @@ class FloatWindowService : Service() {
         if (OcrBridge.currentMode == OcrBridge.MODE_SCREEN_READ) {
             OcrBridge.currentMode = OcrBridge.MODE_NONE
         }
+        screenReadOcrInProgress = false  // ★ 重置 OCR 互斥锁（下次启动时重新可用）
         Log.d("FloatWindow", "stopScreenRead: 读屏模式停止")
         screenReadRunnable?.let { scanHandler.removeCallbacks(it) }
         screenReadRunnable = null
@@ -1061,9 +1064,9 @@ class FloatWindowService : Service() {
             lastFrameThumb = thumb
             // ★ 状态栏实时显示进度（让用户直观看到 OCR 链路走到哪步）
             screenReadStatusText?.text = "🔄 截屏 diff=${(diffRatio * 100).toInt()}%"
-            // 时间间隔控制（1.5s 内不重复 OCR）
+            // 时间间隔控制 + OCR 互斥（避免异步回调 mySeq 永远被丢弃）
             val now = System.currentTimeMillis()
-            if (now - lastScreenReadTime < 1500) {
+            if (now - lastScreenReadTime < 1500 || screenReadOcrInProgress) {
                 full.recycle()
                 return
             }
@@ -1088,14 +1091,18 @@ class FloatWindowService : Service() {
                 scaled
             } else full
             val inputImage = InputImage.fromBitmap(ocrBitmap, 0)
+            // ★ OCR 互斥锁：process 调用前加锁，避免新一轮 process 抢占后 mySeq 永远丢弃
+            screenReadOcrInProgress = true
             serviceRecognizer.process(inputImage)
                 .addOnSuccessListener { result ->
+                    screenReadOcrInProgress = false  // 解锁
                     if (mySeq != ocrSeq) return@addOnSuccessListener
                     if (result.text == lastScreenReadText) return@addOnSuccessListener
                     lastScreenReadText = result.text
                     processScreenReadText(result.text)
                 }
                 .addOnFailureListener { e ->
+                    screenReadOcrInProgress = false  // 解锁
                     if (mySeq != ocrSeq) return@addOnFailureListener
                     // ★ 详细错误日志（带完整 stack trace）+ 友好提示
                     Log.e("FloatWindow", "读屏 OCR 失败: ${e.javaClass.simpleName}: ${e.message}", e)
