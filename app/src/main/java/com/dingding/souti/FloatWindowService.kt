@@ -58,6 +58,10 @@ class FloatWindowService : Service() {
         const val ACTION_SHOW_WINDOW = "com.dingding.souti.SHOW_WINDOW"
         /** ★ 内部停止（Android 14+ 前台服务必须用 stopForeground 才能真的停） */
         const val ACTION_STOP_SELF = "com.dingding.souti.STOP_SELF"
+        /** ★ 读屏模式启动（全屏自动识别，输出到独立答案小窗） */
+        const val ACTION_SCREEN_READ_START = "com.dingding.souti.SCREEN_READ_START"
+        /** ★ 读屏模式停止 */
+        const val ACTION_SCREEN_READ_STOP = "com.dingding.souti.SCREEN_READ_STOP"
         /** ★ 绿框 View 的稳定 ID（用 getLocationOnScreen 获取真实屏幕坐标） */
         private const val R_ID_RECOGNIZE = 0x7F010001
     }
@@ -72,6 +76,25 @@ class FloatWindowService : Service() {
     private var minimizedDotParams: WindowManager.LayoutParams? = null
     private var isMinimized: Boolean = false
     private val bank by lazy { QuestionBank(this) }
+
+    // ★★★ 读屏模式（全屏自动识别）状态 ★★★
+    /** 读屏模式开关（开：全屏截屏 → 滚动防抖 → OCR → 多题匹配 → 独立答案小窗） */
+    private var screenReadActive: Boolean = false
+    /** 读屏模式独立答案小窗（半透明、可拖动、可缩放，不挡作答） */
+    private var screenReadWindow: View? = null
+    private var screenReadParams: WindowManager.LayoutParams? = null
+    /** 读屏模式答案列表容器（小窗内的 ScrollView 内容区） */
+    private var screenReadContainer: LinearLayout? = null
+    /** 读屏模式滚动检测：上一帧缩略图 */
+    private var lastFrameThumb: Bitmap? = null
+    /** 读屏模式连续静止帧计数（≥2 才 OCR，避免滚动中误识别） */
+    private var stableFrameCount: Int = 0
+    /** 读屏模式扫描循环 Runnable */
+    private var screenReadRunnable: Runnable? = null
+    /** 读屏小窗最小化后的圆点（📖） */
+    private var minimizedScreenReadDot: View? = null
+    /** 读屏小窗最小化时保存的位置/尺寸（恢复用） */
+    private var screenReadSavedRect: IntArray = intArrayOf(0, 0, 0, 0)
 
     override fun onCreate() {
         super.onCreate()
@@ -809,6 +832,507 @@ class FloatWindowService : Service() {
         Log.d("FloatWindow", "stopContinuousScan: 暂停扫描（保留 MediaProjection）")
     }
 
+    // ═══════════════════ 读屏模式（全屏自动识别） ═══════════════════
+    // 与浮窗搜题共享 MediaProjection / VirtualDisplay / ImageReader / OCR 识别器
+    // 区别：识别区域 = 全屏（不裁剪绿框）；滚动防抖；多题切分；输出到独立答案小窗
+
+    /** 启动读屏模式：创建答案小窗 + 开始全屏扫描循环 */
+    private fun startScreenRead() {
+        if (OcrBridge.mediaProjection == null) {
+            Log.w("FloatWindow", "startScreenRead: mediaProjection 为 null！无法启动")
+            return
+        }
+        if (screenReadActive) return
+        screenReadActive = true
+        Log.d("FloatWindow", "startScreenRead: 读屏模式启动")
+        // 1. 若浮窗绿框扫描在跑，先停（避免两个扫描循环抢 ImageReader）
+        if (continuousScanning) stopContinuousScan()
+        // 2. 创建长期 VirtualDisplay + ImageReader（若还没创建）
+        ensureScanResources()
+        // 3. 创建独立答案小窗
+        buildScreenReadWindow()
+        // 4. 启动读屏扫描循环
+        screenReadRunnable = object : Runnable {
+            override fun run() {
+                if (!screenReadActive) return
+                captureScreenReadFrame()
+                scanHandler.postDelayed(this, 1500)  // 1.5s 一帧
+            }
+        }
+        scanHandler.post(screenReadRunnable!!)
+    }
+
+    /** 停止读屏模式：停循环 + 移除小窗 + 释放帧缓存 */
+    private fun stopScreenRead() {
+        if (!screenReadActive) return
+        screenReadActive = false
+        Log.d("FloatWindow", "stopScreenRead: 读屏模式停止")
+        scanHandler.removeCallbacks(screenReadRunnable)
+        screenReadRunnable = null
+        lastFrameThumb?.recycle()
+        lastFrameThumb = null
+        stableFrameCount = 0
+        // 移除答案小窗
+        val w = screenReadWindow
+        if (w != null) {
+            try { windowManager.removeView(w) } catch (_: Exception) {}
+            screenReadWindow = null
+        }
+        screenReadParams = null
+        screenReadContainer = null
+    }
+
+    /** 启动读屏扫描循环（暂停/恢复用） */
+    private fun startScreenReadLoop() {
+        if (!screenReadActive) screenReadActive = true
+        if (OcrBridge.mediaProjection == null) return
+        ensureScanResources()
+        screenReadRunnable = object : Runnable {
+            override fun run() {
+                if (!screenReadActive) return
+                captureScreenReadFrame()
+                scanHandler.postDelayed(this, 1500)
+            }
+        }
+        scanHandler.post(screenReadRunnable!!)
+    }
+
+    /** 停止读屏扫描循环（暂停用，保留小窗） */
+    private fun stopScreenReadLoop() {
+        screenReadActive = false
+        scanHandler.removeCallbacks(screenReadRunnable)
+        screenReadRunnable = null
+        lastFrameThumb?.recycle()
+        lastFrameThumb = null
+        stableFrameCount = 0
+    }
+
+    /** 确保长期 VirtualDisplay + ImageReader 存在（浮窗模式已创建则复用） */
+    private fun ensureScanResources() {
+        if (ocrVirtualDisplay != null && ocrImageReader != null) return
+        val metrics = DisplayMetrics()
+        @Suppress("DEPRECATION")
+        windowManager.defaultDisplay.getRealMetrics(metrics)
+        val w = metrics.widthPixels
+        val h = metrics.heightPixels
+        val density = metrics.densityDpi
+        try {
+            val reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+            val vd = OcrBridge.mediaProjection!!.createVirtualDisplay(
+                "ocr_scan", w, h, density,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                reader.surface, null, serviceOcrHandler
+            )
+            ocrImageReader = reader
+            ocrVirtualDisplay = vd
+            Log.d("FloatWindow", "ensureScanResources: 创建 ${w}x${h}@${density}dpi")
+        } catch (e: Exception) {
+            Log.e("FloatWindow", "ensureScanResources 失败: ${e.message}", e)
+        }
+    }
+
+    /**
+     * 读屏模式单帧处理：
+     * 1. acquireLatestImage 拿全屏帧
+     * 2. 缩略图 → 与上一帧比较 diff（滚动检测）
+     * 3. diff 大（滚动中）→ 冻结输出；连续稳定 ≥2 帧 → 全屏 OCR
+     */
+    private fun captureScreenReadFrame() {
+        val reader = ocrImageReader ?: return
+        val mySeq = ++ocrSeq
+        val image = try { reader.acquireLatestImage() } catch (e: Exception) {
+            Log.e("FloatWindow", "读屏 acquireLatestImage 异常: ${e.message}")
+            null
+        }
+        if (image == null) return
+        try {
+            val planes = image.planes
+            val buffer = planes[0].buffer
+            val pixelStride = planes[0].pixelStride
+            val rowStride = planes[0].rowStride
+            val rowPadding = rowStride - pixelStride * image.width
+            val full = Bitmap.createBitmap(
+                image.width + rowPadding / pixelStride, image.height,
+                Bitmap.Config.ARGB_8888
+            )
+            full.copyPixelsFromBuffer(buffer)
+            image.close()
+            // ★ 滚动检测：缩小成 32x64 灰度近似图，与上一帧 diff
+            val thumb = Bitmap.createScaledBitmap(full, 32, 64, false)
+            val diffRatio = computeFrameDiff(thumb, lastFrameThumb)
+            lastFrameThumb?.recycle()
+            lastFrameThumb = thumb
+            if (diffRatio > 0.12f) {
+                // 内容在动（滚动中）→ 冻结输出，不 OCR
+                stableFrameCount = 0
+                Log.d("FloatWindow", "读屏: 滚动中 diff=$diffRatio 冻结")
+                full.recycle()
+                return
+            }
+            stableFrameCount++
+            if (stableFrameCount < 2) {
+                Log.d("FloatWindow", "读屏: 稳定帧 ${stableFrameCount}/2 等待")
+                full.recycle()
+                return
+            }
+            Log.d("FloatWindow", "读屏: 静止 diff=$diffRatio 开始 OCR")
+            // ★ 全屏 OCR（不裁剪）
+            val inputImage = InputImage.fromBitmap(full, 0)
+            serviceRecognizer.process(inputImage)
+                .addOnSuccessListener { result ->
+                    if (mySeq != ocrSeq) return@addOnSuccessListener
+                    processScreenReadText(result.text)
+                }
+                .addOnFailureListener { e ->
+                    if (mySeq != ocrSeq) return@addOnFailureListener
+                    Log.e("FloatWindow", "读屏 OCR 失败: ${e.message}")
+                }
+            full.recycle()  // OCR 异步，recycle 后 ML Kit 内部已复制像素（InputImage.fromBitmap 会拷贝）
+        } catch (e: Exception) {
+            Log.e("FloatWindow", "读屏截屏失败: ${e.message}")
+        }
+    }
+
+    /** 计算两帧缩略图 diff 比例（0-1）：逐像素比较 RGB 亮度差 */
+    private fun computeFrameDiff(a: Bitmap, b: Bitmap?): Float {
+        if (b == null || a.width != b.width || a.height != b.height) return 1f
+        var diffPixels = 0
+        val w = a.width
+        val h = a.height
+        for (y in 0 until h) {
+            for (x in 0 until w) {
+                val pa = a.getPixel(x, y)
+                val pb = b.getPixel(x, y)
+                val dr = Math.abs((pa shr 16 and 0xFF) - (pb shr 16 and 0xFF))
+                val dg = Math.abs((pa shr 8 and 0xFF) - (pb shr 8 and 0xFF))
+                val db = Math.abs((pa and 0xFF) - (pb and 0xFF))
+                if (dr + dg + db > 90) diffPixels++
+            }
+        }
+        return diffPixels.toFloat() / (w * h)
+    }
+
+    /**
+     * 读屏模式独立答案小窗：
+     * - 半透明深色底（不刺眼、不挡作答）
+     * - 顶部标题栏：读屏搜题 + 暂停/继续 + 最小化 + 关闭
+     * - 下方 ScrollView：多题答案列表（B方案全列表）
+     * - 可拖动（标题栏拖拽）、可缩放（右下角 ◢）
+     */
+    private fun buildScreenReadWindow() {
+        if (screenReadWindow != null) return
+        val win = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F2262626"))  // 半透明深灰（约 90% 不透明深底）
+                cornerRadius = dp(12).toFloat()
+            }
+            setPadding(dp(6), dp(4), dp(6), dp(4))
+        }
+        // ── 标题栏（可拖拽移动整窗）──
+        val titleBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        titleBar.addView(TextView(this).apply {
+            text = "读屏搜题"
+            textSize = 12f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.parseColor("#FFFFFF"))
+        })
+        titleBar.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
+        // 暂停/继续按钮
+        val pauseBtn = TextView(this).apply {
+            text = "⏸"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dp(6), dp(2), dp(6), dp(2))
+            setOnClickListener {
+                if (screenReadActive) {
+                    stopScreenReadLoop()
+                    text = "▶"
+                } else {
+                    startScreenReadLoop()
+                    text = "⏸"
+                }
+            }
+        }
+        titleBar.addView(pauseBtn)
+        // 最小化（缩成小圆点，类似老板键）
+        val minBtn = TextView(this).apply {
+            text = "—"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            setOnClickListener { minimizeScreenReadWindow() }
+        }
+        titleBar.addView(minBtn)
+        // 关闭
+        val closeBtn = TextView(this).apply {
+            text = "✕"
+            textSize = 12f
+            setTextColor(Color.parseColor("#E24B4A"))
+            gravity = Gravity.CENTER
+            setPadding(dp(6), dp(2), dp(6), dp(2))
+            setOnClickListener { stopScreenRead() }
+        }
+        titleBar.addView(closeBtn)
+        win.addView(titleBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)))
+        // ── 结果区 ScrollView（多题答案列表）──
+        val container = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        container.addView(TextView(this).apply {
+            text = "正在识别屏幕..."
+            textSize = 11f
+            setTextColor(Color.parseColor("#AAAAAA"))
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(10), dp(4), dp(10))
+        })
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = true
+            addView(container)
+        }
+        win.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        // ── 右下角缩放手柄 ◢ ──
+        val resizeHandle = TextView(this).apply {
+            text = "◢"
+            textSize = 10f
+            setTextColor(Color.parseColor("#888888"))
+            gravity = Gravity.CENTER
+        }
+        val handleLp = LinearLayout.LayoutParams(dp(24), dp(18))
+        handleLp.gravity = Gravity.END
+        win.addView(resizeHandle, handleLp)
+
+        // ── 窗口参数：右上角靠边，260x360dp ──
+        val p = WindowManager.LayoutParams(
+            dp(260), dp(360),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.END
+            x = dp(8)
+            y = dp(80)
+        }
+        try {
+            windowManager.addView(win, p)
+        } catch (e: Exception) {
+            Log.e("FloatWindow", "读屏小窗创建失败: ${e.message}")
+            return
+        }
+        screenReadWindow = win
+        screenReadParams = p
+        screenReadContainer = container
+        bindScreenReadDragAndResize(win, titleBar, resizeHandle, p)
+        Log.d("FloatWindow", "读屏小窗已创建 260x360dp")
+    }
+
+    /** 读屏小窗：标题栏拖拽移动 + ◢ 缩放 */
+    private fun bindScreenReadDragAndResize(
+        win: View, titleBar: View, resizeHandle: View, p: WindowManager.LayoutParams
+    ) {
+        titleBar.setOnTouchListener(object : View.OnTouchListener {
+            private var initX = 0
+            private var initY = 0
+            private var startTX = 0f
+            private var startTY = 0f
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initX = p.x
+                        initY = p.y
+                        startTX = event.rawX
+                        startTY = event.rawY
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.rawX - startTX).toInt()
+                        val dy = (event.rawY - startTY).toInt()
+                        p.x = initX + dx
+                        p.y = initY + dy
+                        try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
+                    }
+                }
+                return true
+            }
+        })
+        resizeHandle.setOnTouchListener(object : View.OnTouchListener {
+            private var initW = 0
+            private var initH = 0
+            private var startTX = 0f
+            private var startTY = 0f
+            override fun onTouch(v: View, event: MotionEvent): Boolean {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initW = p.width
+                        initH = p.height
+                        startTX = event.rawX
+                        startTY = event.rawY
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        val dx = (event.rawX - startTX).toInt()
+                        val dy = (event.rawY - startTY).toInt()
+                        p.width = (initW + dx).coerceIn(dp(180), dp(500))
+                        p.height = (initH + dy).coerceIn(dp(240), dp(700))
+                        try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
+                    }
+                }
+                return true
+            }
+        })
+    }
+
+    /** 读屏小窗最小化：缩成屏幕边缘小圆点（可点恢复），不打扰作答 */
+    private fun minimizeScreenReadWindow() {
+        val w = screenReadWindow ?: return
+        val p = screenReadParams ?: return
+        // 记住位置（恢复时用）
+        screenReadSavedRect = intArrayOf(p.x, p.y, p.width, p.height)
+        try { windowManager.removeView(w) } catch (_: Exception) {}
+        screenReadWindow = null
+        screenReadParams = null
+        // 创建 36dp 圆点
+        val dot = TextView(this).apply {
+            text = "📖"
+            textSize = 16f
+            gravity = Gravity.CENTER
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#E61D9E75"))
+                cornerRadius = dp(18).toFloat()
+            }
+            setOnClickListener {
+                // 恢复小窗
+                try { windowManager.removeView(this) } catch (_: Exception) {}
+                restoreScreenReadWindow()
+            }
+        }
+        val dotP = WindowManager.LayoutParams(
+            dp(36), dp(36),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.END
+            x = dp(8)
+            y = screenReadSavedRect[1]
+        }
+        try {
+            windowManager.addView(dot, dotP)
+            minimizedScreenReadDot = dot
+        } catch (_: Exception) {}
+    }
+
+    /** 从最小化圆点恢复读屏小窗 */
+    private fun restoreScreenReadWindow() {
+        // 移除圆点
+        minimizedScreenReadDot?.let {
+            try { windowManager.removeView(it) } catch (_: Exception) {}
+        }
+        minimizedScreenReadDot = null
+        val x = screenReadSavedRect[0]
+        val y = screenReadSavedRect[1]
+        val w = screenReadSavedRect[2]
+        val h = screenReadSavedRect[3]
+        // 重建小窗（用 saved 参数）
+        val win = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            background = GradientDrawable().apply {
+                setColor(Color.parseColor("#F2262626"))
+                cornerRadius = dp(12).toFloat()
+            }
+            setPadding(dp(6), dp(4), dp(6), dp(4))
+        }
+        val titleBar = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+        titleBar.addView(TextView(this).apply {
+            text = "读屏搜题"
+            textSize = 12f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.WHITE)
+        })
+        titleBar.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
+        val pauseBtn = TextView(this).apply {
+            text = if (screenReadActive) "⏸" else "▶"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dp(6), dp(2), dp(6), dp(2))
+            setOnClickListener {
+                if (screenReadActive) {
+                    stopScreenReadLoop()
+                    text = "▶"
+                } else {
+                    startScreenReadLoop()
+                    text = "⏸"
+                }
+            }
+        }
+        titleBar.addView(pauseBtn)
+        val minBtn = TextView(this).apply {
+            text = "—"
+            textSize = 14f
+            setTextColor(Color.WHITE)
+            gravity = Gravity.CENTER
+            setPadding(dp(8), dp(2), dp(8), dp(2))
+            setOnClickListener { minimizeScreenReadWindow() }
+        }
+        titleBar.addView(minBtn)
+        val closeBtn = TextView(this).apply {
+            text = "✕"
+            textSize = 12f
+            setTextColor(Color.parseColor("#E24B4A"))
+            gravity = Gravity.CENTER
+            setPadding(dp(6), dp(2), dp(6), dp(2))
+            setOnClickListener { stopScreenRead() }
+        }
+        titleBar.addView(closeBtn)
+        win.addView(titleBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)))
+        val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        container.addView(TextView(this).apply {
+            text = "正在识别屏幕..."
+            textSize = 11f
+            setTextColor(Color.parseColor("#AAAAAA"))
+            gravity = Gravity.CENTER
+            setPadding(dp(4), dp(10), dp(4), dp(10))
+        })
+        val scroll = ScrollView(this).apply { addView(container) }
+        win.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        val resizeHandle = TextView(this).apply {
+            text = "◢"
+            textSize = 10f
+            setTextColor(Color.parseColor("#888888"))
+            gravity = Gravity.CENTER
+        }
+        val handleLp = LinearLayout.LayoutParams(dp(24), dp(18))
+        handleLp.gravity = Gravity.END
+        win.addView(resizeHandle, handleLp)
+        val p = WindowManager.LayoutParams(
+            w, h,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.END
+            x = x
+            y = y
+        }
+        try {
+            windowManager.addView(win, p)
+        } catch (e: Exception) {
+            Log.e("FloatWindow", "读屏恢复失败: ${e.message}")
+            return
+        }
+        screenReadWindow = win
+        screenReadParams = p
+        screenReadContainer = container
+        bindScreenReadDragAndResize(win, titleBar, resizeHandle, p)
+    }
+
     /** 浮窗待机模式下 OCR 开关点击（暂停/恢复三态）：
      *  - 扫描中 → 暂停（保留 MediaProjection）
      *  - 已授权未扫描 → 恢复扫描
@@ -995,6 +1519,199 @@ class FloatWindowService : Service() {
         val sorted = merged.values.sortedByDescending { it.second }.take(5).map { it.first }
         Log.d("FloatWindow", "搜题结果: ${merged.size} 条唯一匹配，显示前 ${sorted.size}")
         renderScanResults(sorted)
+    }
+
+    // ═══════════════ 读屏模式：多题切分 + 匹配渲染 ═══════════════
+
+    /**
+     * 读屏模式 OCR 文本处理（B 方案：全列表输出）：
+     * - 文本 ≤ 300 字 → 单题：直接 LCS 匹配，输出单张卡片
+     * - 文本 > 300 字 → 多题：按题号+选项结构切分 N 题，每题独立匹配，按屏幕顺序输出列表
+     * - 无匹配时小窗内显示提示
+     */
+    private fun processScreenReadText(text: String) {
+        if (text.isBlank()) return
+        val cleaned = text.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
+        Log.d("FloatWindow", "读屏 OCR(${cleaned.length}字): ${cleaned.take(80)}...")
+        val container = screenReadContainer ?: return
+        container.removeAllViews()
+        if (cleaned.length <= 300) {
+            // ── 单题模式：整段作为查询词 ──
+            val results = bank.search(cleaned, limit = 5)
+            Log.d("FloatWindow", "读屏单题匹配: ${results.size} 条")
+            renderScreenReadResults(container, results, isMulti = false)
+        } else {
+            // ── 多题模式：按结构切分 ──
+            val questions = splitScreenReadQuestions(cleaned)
+            Log.d("FloatWindow", "读屏多题切分: ${questions.size} 段")
+            if (questions.size <= 1) {
+                // 切分失败（无题号结构）→ 仍按单题处理
+                val results = bank.search(cleaned, limit = 5)
+                renderScreenReadResults(container, results, isMulti = false)
+                return
+            }
+            // 每段独立匹配，按屏幕顺序收集
+            val allResults = mutableListOf<List<SearchResult>>()
+            questions.forEach { seg ->
+                val r = bank.search(seg, limit = 3)
+                allResults.add(r)
+            }
+            renderScreenReadMulti(container, questions, allResults)
+        }
+    }
+
+    /**
+     * 多题切分：按 "数字. " 题号 + 选项结构把长文本切成 N 个候选题目
+     * 规则：
+     * 1. 找所有 "数字." / "数字、" 开头位置（题号锚点）
+     * 2. 题号之间 = 一道题
+     * 3. 若题号太少（<2）→ 退化单题（整段）
+     */
+    private fun splitScreenReadQuestions(text: String): List<String> {
+        // 匹配 "1. " "2、" "3．" 等题号模式（OCR 常见变体）
+        val numRe = Regex("(?<![\\d])(\\d{1,3})[.、．]\\s*")
+        val matches = numRe.findAll(text)
+        val starts = matches.map { it.range.first }.toList()
+        if (starts.size < 2) return listOf(text)
+        val segments = mutableListOf<String>()
+        for (i in starts.indices) {
+            val s = starts[i]
+            val e = if (i + 1 < starts.size) starts[i + 1] else text.length
+            val seg = text.substring(s, e).trim()
+            if (seg.length >= 8) segments.add(seg)
+        }
+        return segments
+    }
+
+    /** 渲染多题列表（每题一张卡，按屏幕顺序） */
+    private fun renderScreenReadMulti(
+        container: LinearLayout, questions: List<String>, resultsList: List<List<SearchResult>>
+    ) {
+        // 头部提示：识别到 N 题
+        container.addView(TextView(this).apply {
+            text = "📋 识别到 ${questions.size} 道题（滚动切换后自动更新）"
+            textSize = 11f
+            setTypeface(typeface, Typeface.BOLD)
+            setTextColor(Color.parseColor("#9FE1CB"))
+            setPadding(dp(4), dp(2), dp(4), dp(6))
+        })
+        questions.forEachIndexed { idx, seg ->
+            val results = resultsList[idx]
+            // 题号（切分后第一段可能带题号，提取显示）
+            val title = "第 ${idx + 1} 题"
+            if (results.isEmpty()) {
+                container.addView(TextView(this).apply {
+                    text = "$title 未匹配"
+                    textSize = 11f
+                    setTextColor(Color.parseColor("#888888"))
+                    setPadding(dp(4), dp(4), dp(4), dp(2))
+                })
+                return@forEachIndexed
+            }
+            // 每题显示最佳匹配卡片（简化版，只显示答案+相关度）
+            val best = results[0]
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply {
+                    setColor(Color.parseColor("#33222222"))
+                    cornerRadius = dp(8).toFloat()
+                }
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(6) }
+            }
+            card.addView(TextView(this).apply {
+                text = title
+                textSize = 10f
+                setTextColor(Color.parseColor("#9FE1CB"))
+                setTypeface(typeface, Typeface.BOLD)
+            })
+            card.addView(TextView(this).apply {
+                text = best.question.stem.take(40) + if (best.question.stem.length > 40) "..." else ""
+                textSize = 10f
+                setTextColor(Color.parseColor("#DDDDDD"))
+                maxLines = 2
+            })
+            if (best.question.answer.isNotBlank()) {
+                card.addView(TextView(this).apply {
+                    text = "✔ ${best.question.answer}"
+                    textSize = 13f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(Color.parseColor("#1D9E75"))
+                })
+            }
+            card.addView(TextView(this).apply {
+                text = "相关度 ${best.score}"
+                textSize = 9f
+                setTextColor(Color.parseColor("#888888"))
+            })
+            container.addView(card)
+        }
+    }
+
+    /** 渲染读屏单题结果（样式与浮窗卡片一致，白底深字更清晰） */
+    private fun renderScreenReadResults(
+        container: LinearLayout, results: List<SearchResult>, isMulti: Boolean
+    ) {
+        if (results.isEmpty()) {
+            container.addView(TextView(this).apply {
+                text = "未匹配到题库题目"
+                textSize = 11f
+                setTextColor(Color.parseColor("#888888"))
+                gravity = Gravity.CENTER
+                setPadding(dp(4), dp(16), dp(4), dp(16))
+            })
+            return
+        }
+        results.forEachIndexed { idx, sr ->
+            val isBest = idx == 0
+            val card = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background = GradientDrawable().apply {
+                    setColor(if (isBest) Color.parseColor("#E8F5E9") else Color.parseColor("#F5F5F5"))
+                    cornerRadius = dp(8).toFloat()
+                }
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { bottomMargin = dp(6) }
+            }
+            card.addView(TextView(this).apply {
+                text = (if (isBest) "🎯 " else "${idx + 1}. ") + sr.question.stem
+                textSize = 11f
+                setTypeface(typeface, Typeface.BOLD)
+                setTextColor(Color.parseColor("#222222"))
+                if (sr.question.options.isNotEmpty() || sr.question.answer.isNotEmpty()) {
+                    maxLines = 2
+                    ellipsize = TextUtils.TruncateAt.END
+                }
+            })
+            sr.question.options.forEach { opt ->
+                card.addView(TextView(this).apply {
+                    text = opt
+                    textSize = 10f
+                    setTextColor(Color.parseColor("#555555"))
+                    setPadding(dp(2), dp(0), dp(2), dp(0))
+                })
+            }
+            if (sr.question.answer.isNotBlank()) {
+                card.addView(TextView(this).apply {
+                    text = "✔ ${sr.question.answer}"
+                    textSize = 13f
+                    setTypeface(typeface, Typeface.BOLD)
+                    setTextColor(Color.parseColor("#1D9E75"))
+                })
+            }
+            card.addView(TextView(this).apply {
+                text = "来源：${sr.bankName} · 相关度 ${sr.score}"
+                textSize = 9f
+                setTextColor(Color.parseColor("#AAAAAA"))
+            })
+            container.addView(card)
+        }
     }
 
     /** 渲染实时扫描结果到结果区 */
@@ -1253,8 +1970,20 @@ class FloatWindowService : Service() {
     override fun onDestroy() {
         super.onDestroy()
         continuousScanning = false
+        screenReadActive = false
         scanHandler.removeCallbacksAndMessages(null)
         OcrBridge.isRunning = false
+        // ★ 读屏小窗/圆点清理（防止窗口泄漏）
+        screenReadWindow?.let {
+            try { windowManager.removeView(it) } catch (_: Exception) {}
+            screenReadWindow = null
+        }
+        minimizedScreenReadDot?.let {
+            try { windowManager.removeView(it) } catch (_: Exception) {}
+            minimizedScreenReadDot = null
+        }
+        lastFrameThumb?.recycle()
+        lastFrameThumb = null
         // ★ 写 SharedPreferences 让主页轮询到
         getSharedPreferences("souti_state", android.content.Context.MODE_PRIVATE)
             .edit().putBoolean("service_running", false).apply()
@@ -1301,6 +2030,23 @@ class FloatWindowService : Service() {
             ACTION_STOP_SCAN -> {
                 stopContinuousScan()
             }
+            ACTION_SCREEN_READ_START -> {
+                if (OcrBridge.mediaProjection == null) {
+                    // 没授权：先去授权（复用浮窗授权流程，标记读屏模式）
+                    val authIntent = Intent(this, MainActivity::class.java).apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        putExtra("ocr_request", true)
+                        putExtra("ocr_continuous", true)
+                        putExtra("ocr_screen_read", true)
+                    }
+                    startActivity(authIntent)
+                } else {
+                    startScreenRead()
+                }
+            }
+            ACTION_SCREEN_READ_STOP -> {
+                stopScreenRead()
+            }
             ACTION_TOGGLE_DEBUG -> {
                 // ★ 切换红框可见性（toggle：每次点都反转）
                 val cur = redBorderView?.visibility == View.VISIBLE
@@ -1328,6 +2074,7 @@ class FloatWindowService : Service() {
                 // ★ Android 14+ 前台服务必须在 stopService 之前 stopForeground（否则 onDestroy 不触发）
                 Log.d("FloatWindow", "ACTION_STOP_SELF 收到")
                 stopContinuousScan()
+                stopScreenRead()
                 // 释放 MediaProjection
                 try {
                     OcrBridge.mediaProjection?.stop()
@@ -1375,11 +2122,19 @@ class FloatWindowService : Service() {
                             Log.d("FloatWindow", "MediaProjection onStop")
                             // 用户停止录屏时，自动停止 OCR 扫描
                             stopContinuousScan()
+                            stopScreenRead()
                             ocrTopSwitch?.text = if (OcrBridge.mediaProjection == null) "🔓授权并扫描" else "🔄开始扫描"
                             statusDot?.let { d -> statusText?.let { t -> updateStatusUi(d, t, scanning = false) } }
                         }
                     }, serviceOcrHandler)
                     OcrBridge.mediaProjection = projection
+                    // ★ 读屏模式：授权成功后启动全屏读屏扫描（而非绿框扫描）
+                    if (OcrBridge.screenRead) {
+                        Log.d("FloatWindow", "Service 创建 MediaProjection 成功（读屏模式），自动开始读屏扫描")
+                        OcrBridge.screenRead = false  // 一次性标记，消费掉
+                        startScreenRead()
+                        return START_STICKY
+                    }
                     Log.d("FloatWindow", "Service 创建 MediaProjection 成功，自动开始扫描")
                     startContinuousScan()
                     // ★ 启动成功才改 UI 文字；如果 scan 没启动成功，OCR 失败时回滚

@@ -61,9 +61,10 @@ class MainActivity : ComponentActivity() {
     }
 
     /** 给 FloatWindowService 调用：发起 OCR 授权请求 */
-    fun startOcrRequest(rect: Rect, continuous: Boolean = false) {
+    fun startOcrRequest(rect: Rect, continuous: Boolean = false, screenRead: Boolean = false) {
         OcrBridge.pendingRect = rect
         OcrBridge.continuous = continuous
+        OcrBridge.screenRead = screenRead
         ocrHelper.startOcr(rect, projectionLauncher)
     }
 
@@ -109,7 +110,8 @@ class MainActivity : ComponentActivity() {
                 intent.getIntExtra("rect_bottom", 1)
             )
             val continuous = intent.getBooleanExtra("ocr_continuous", false)
-            startOcrRequest(rect, continuous)
+            val screenRead = intent.getBooleanExtra("ocr_screen_read", false)
+            startOcrRequest(rect, continuous, screenRead)
         }
     }
 
@@ -225,7 +227,25 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
                 ) { Text(when { !hasOverlayPermission -> "授权悬浮窗权限"; floatRunning -> "关闭服务（需重新授权）"; else -> "启动服务" }, fontSize = 15.sp) }
             }
         }
-        MenuCard("读屏搜题", "录屏实时检测全屏题目（OCR 明早实现）") {}
+        MenuCard("读屏搜题", "全屏自动识别，答案小窗输出（不挡作答）") {
+            // ★ 读屏模式：需要悬浮窗权限 + MediaProjection 授权
+            if (!Settings.canDrawOverlays(context)) {
+                // 没有悬浮窗权限 → 引导授权
+                context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+            } else {
+                // 有悬浮窗权限 → 发读屏启动（无 MediaProjection 时 Service 内部引导授权）
+                val svcIntent = Intent(context, FloatWindowService::class.java).apply {
+                    action = FloatWindowService.ACTION_SCREEN_READ_START
+                }
+                context.startService(svcIntent)
+                // 给个提示（如果正在读屏，提示怎么停）
+                android.widget.Toast.makeText(
+                    context,
+                    "读屏搜题已启动：小窗右上角 ✕ 关闭",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+        }
         MenuCard("扫描搜题", "摄像头实时扫描出题（待开发）") {}
         MenuCard("AI 搜题", "在线大模型搜题（待开发）") {}
         Spacer(Modifier.height(16.dp))

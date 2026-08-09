@@ -12,6 +12,8 @@ object OcrBridge {
     var mediaProjection: MediaProjection? = null
     /** 持续模式开关 */
     var continuous: Boolean = false
+    /** ★ 读屏模式请求标记（授权成功后启动读屏而非绿框扫描） */
+    var screenRead: Boolean = false
     /** 浮窗区域（屏幕 px 坐标） */
     var pendingRect: Rect = Rect(0, 0, 1, 1)
     /** 是否正在运行 */
