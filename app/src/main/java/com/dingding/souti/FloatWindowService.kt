@@ -1131,8 +1131,14 @@ class FloatWindowService : Service() {
             lastScreenReadTime = now
             screenReadStatusText?.text = "🔄 OCR 中... diff=${(diffRatio * 100).toInt()}%"
             Log.d("FloatWindow", "读屏: diff=$diffRatio → OCR (${full.width}x${full.height})")
-            // ★ 缩放到 ML Kit 中文识别器推荐尺寸 720x1280（之前 1080x1920 仍然太大导致 "Failed to run text recognizer"）
-            //    浮窗搜题 OCR 用小 bitmap（裁剪绿框 ~300x100）能跑 → 验证 bitmap 大小是关键限制
+            // ★ 自适应反色：检测图片平均亮度，深色背景（黑底白字）自动反色成白底黑字
+            //    ML Kit 中文识别训练数据主要是白底黑字，深底浅字识别率极低（文本文档深色主题完全读不到）
+            val avgBrightness = computeAverageBrightness(full)
+            if (avgBrightness < 100) {
+                Log.d("FloatWindow", "读屏: 检测到深色背景(avg=$avgBrightness)，执行反色")
+                invertBitmap(full)
+            }
+            // ★ 缩放到 ML Kit 中文识别器推荐尺寸 720x1280
             val targetWidth = 720
             val targetHeight = 1280
             val scale = minOf(
@@ -1209,6 +1215,35 @@ class FloatWindowService : Service() {
             }
         }
         return diffPixels.toFloat() / (w * h)
+    }
+
+    /** 计算 bitmap 平均亮度（0-255）：采样 1/8 像素加速 */
+    private fun computeAverageBrightness(bmp: Bitmap): Int {
+        var sum = 0L
+        var count = 0
+        val step = 8
+        for (y in 0 until bmp.height step step) {
+            for (x in 0 until bmp.width step step) {
+                val p = bmp.getPixel(x, y)
+                sum += (p shr 16 and 0xFF) + (p shr 8 and 0xFF) + (p and 0xFF)
+                count += 3
+            }
+        }
+        return if (count == 0) 255 else (sum / count).toInt()
+    }
+
+    /** 反色：白↔黑、浅↔深（深底浅字 → 白底黑字，让 ML Kit 识别率恢复） */
+    private fun invertBitmap(bmp: Bitmap) {
+        val pixels = IntArray(bmp.width * bmp.height)
+        bmp.getPixels(pixels, 0, bmp.width, 0, 0, bmp.width, bmp.height)
+        for (i in pixels.indices) {
+            val a = pixels[i] shr 24 and 0xFF
+            val r = 255 - (pixels[i] shr 16 and 0xFF)
+            val g = 255 - (pixels[i] shr 8 and 0xFF)
+            val b = 255 - (pixels[i] and 0xFF)
+            pixels[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
+        }
+        bmp.setPixels(pixels, 0, bmp.width, 0, 0, bmp.width, bmp.height)
     }
 
     /**
