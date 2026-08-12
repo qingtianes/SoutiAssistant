@@ -1137,24 +1137,12 @@ class FloatWindowService : Service() {
                 Log.d("FloatWindow", "读屏: 检测到深色背景(avg=$avgBrightness)，执行反色")
                 invertBitmap(full)
             }
-            // ★ 缩放到 540x960（更小 → 文档里 13sp 文字占比更高 → ML Kit 识别率提升）
-            //    之前 720x1280 缩放后文字过小，文本文档完全读不到
-            val targetWidth = 540
-            val targetHeight = 960
-            val scale = minOf(
-                targetWidth.toFloat() / full.width,
-                targetHeight.toFloat() / full.height
-            )
-            val ocrBitmap = if (scale < 1f) {
-                val scaled = Bitmap.createScaledBitmap(
-                    full,
-                    (full.width * scale).toInt(),
-                    (full.height * scale).toInt(),
-                    true
-                )
-                full.recycle()
-                scaled
-            } else full
+            // ★★★ 关键：不缩小！直接用原图 OCR（1280x2856）★★★
+            //    之前 720x1280 / 540x960 缩放把文档 13sp 小字缩到 42%/31% → ML Kit 识别不到
+            //    桌面图标文字大（16-20sp）所以能识别；文档小字必须保留原始像素！
+            //    之前 1080x1920 报 "Failed to run text recognizer" 是并发+bitmap recycle 问题（已修复）
+            //    现在 OCR 资源已独立，直接用原图，文字最大识别率最高
+            val ocrBitmap = full
             val inputImage = InputImage.fromBitmap(ocrBitmap, 0)
             // ★ OCR 互斥锁：process 调用前加锁，避免新一轮 process 抢占后 mySeq 永远丢弃
             screenReadOcrInProgress = true
