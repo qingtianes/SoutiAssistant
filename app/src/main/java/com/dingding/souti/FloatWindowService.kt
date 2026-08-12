@@ -1143,18 +1143,32 @@ class FloatWindowService : Service() {
             lastScreenReadTime = now
             screenReadStatusText?.text = "🔄 OCR 中... diff=${(diffRatio * 100).toInt()}%"
             Log.d("FloatWindow", "读屏: diff=$diffRatio → OCR (${full.width}x${full.height})")
+            // ★★★ 关键修复：裁剪中央文字密集区（去掉状态栏和导航栏）后缩放到 720 宽 ★★★
+            //    浮窗 OCR 证明：ML Kit 中文识别能跑（WebView 内容也能识别）→ 限制是 bitmap 尺寸不能太大
+            //    全屏 1280x2856 → ML Kit 中文识别静默失败（不报错但返回空文字）→ 用户看到"OCR 中...但没输出"
+            //    裁剪中央 75%（去掉顶 120px 状态栏 + 底 200px 导航栏）→ 缩放到 720 宽 → 文字占比更高 → ML Kit 能识别
+            val statusBarH = 120
+            val navBarH = 200
+            val cropY0 = statusBarH
+            val cropY1 = full.height - navBarH
+            val cropped = Bitmap.createBitmap(full, 0, cropY0, full.width, cropY1 - cropY0)
             // ★ 自适应反色：检测图片平均亮度，深色背景（黑底白字）自动反色成白底黑字
-            val avgBrightness = computeAverageBrightness(full)
+            val avgBrightness = computeAverageBrightness(cropped)
             if (avgBrightness < 100) {
                 Log.d("FloatWindow", "读屏: 检测到深色背景(avg=$avgBrightness)，执行反色")
-                invertBitmap(full)
+                invertBitmap(cropped)
             }
-            // ★★★ 关键：不缩小！直接用原图 OCR（1280x2856）★★★
-            //    之前 720x1280 / 540x960 缩放把文档 13sp 小字缩到 42%/31% → ML Kit 识别不到
-            //    桌面图标文字大（16-20sp）所以能识别；文档小字必须保留原始像素！
-            //    之前 1080x1920 报 "Failed to run text recognizer" 是并发+bitmap recycle 问题（已修复）
-            //    现在 OCR 资源已独立，直接用原图，文字最大识别率最高
-            val ocrBitmap = full
+            // ★ 缩放到 720 宽（浮窗 OCR 验证 ML Kit 接受此尺寸），高度按比例
+            val targetWidth = 720
+            val scale = targetWidth.toFloat() / cropped.width
+            val ocrBitmap = Bitmap.createScaledBitmap(
+                cropped,
+                targetWidth,
+                (cropped.height * scale).toInt(),
+                true
+            )
+            cropped.recycle()
+            full.recycle()  // full 已裁剪+缩放，释放
             val inputImage = InputImage.fromBitmap(ocrBitmap, 0)
             // ★ OCR 互斥锁：process 调用前加锁，避免新一轮 process 抢占后 mySeq 永远丢弃
             screenReadOcrInProgress = true
