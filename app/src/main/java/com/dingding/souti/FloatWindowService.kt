@@ -107,6 +107,15 @@ class FloatWindowService : Service() {
     private var screenReadSavedRect: IntArray = intArrayOf(0, 0, 0, 0)
     /** ★ 启动读屏模式时主浮窗是否在跑（用于停止读屏时决定是否恢复主浮窗） */
     private var floatWasRunningBeforeScreenRead: Boolean = false
+    // ★★★ 读屏搜题专用 OCR 资源（与浮窗搜题完全独立，绝不共享） ★★★
+    /** 读屏专用 TextRecognizer（不与浮窗的 serviceRecognizer 共享，避坑并发卡死） */
+    private var screenReadRecognizer: com.google.mlkit.vision.text.TextRecognizer? = null
+    /** 读屏专用 ImageReader（不与浮窗的 ocrImageReader 共享） */
+    private var screenReadImageReader: android.media.ImageReader? = null
+    /** 读屏专用 VirtualDisplay（不与浮窗的 ocrVirtualDisplay 共享） */
+    private var screenReadVirtualDisplay: android.hardware.display.VirtualDisplay? = null
+    /** 读屏专用 Handler（OCR 异步回调，不与浮窗共享） */
+    private val screenReadOcrHandler = Handler(Looper.getMainLooper())
 
     override fun onCreate() {
         super.onCreate()
@@ -872,23 +881,17 @@ class FloatWindowService : Service() {
         // ★ 标记当前模式为读屏（让主页轮询能区分显示）
         OcrBridge.currentMode = OcrBridge.MODE_SCREEN_READ
         Log.d("FloatWindow", "startScreenRead: 读屏模式启动")
-        // ★★ 根因修复：先停浮窗循环，再重建识别器！
-        //    浮窗搜题可能一直在跑（每2s process一次），如果直接复用同一个 serviceRecognizer 调 process()
-        //    → 浮窗最后一次异步 process() 还没完成 + 读屏新 process() 同时跑在同一个识别器上
-        //    → ML Kit 内部状态错乱 → Task 永久卡死（不回调 success/failure）
-        //    必须 close 旧的（中断浮窗残留 process）+ 新建独立识别器
-        if (continuousScanning) stopContinuousScan()  // 先停浮窗循环
-        recreateServiceRecognizer()                    // 再重建识别器（中断残留 process）
         // 1. ★ 记录主浮窗是否在跑（停止读屏时根据这个决定是否恢复）
         floatWasRunningBeforeScreenRead = (root != null)
+        // 2. 若浮窗绿框扫描在跑，先停（避免两个扫描循环抢同一个 recognizer）
+        if (continuousScanning) stopContinuousScan()
         // 3. ★ 隐藏主浮窗（root 还在内存里，只 removeView，不销毁。停止读屏时恢复）
         if (root != null) {
             try { windowManager.removeView(root) } catch (_: Exception) {}
-            // 不清 root 引用，停止时直接 addView 回去
             Log.d("FloatWindow", "读屏模式：主浮窗已隐藏")
         }
-        // 4. 创建长期 VirtualDisplay + ImageReader（若还没创建）
-        ensureScanResources()
+        // ★★★ 4. 创建读屏专用资源（完全独立于浮窗搜题，绝不共享 recognizer/ImageReader/VirtualDisplay）★★★
+        ensureScreenReadResources()
         // 5. 创建独立答案小窗
         buildScreenReadWindow()
         // 6. 启动读屏扫描循环
@@ -896,10 +899,52 @@ class FloatWindowService : Service() {
             override fun run() {
                 if (!screenReadActive) return
                 captureScreenReadFrame()
-                scanHandler.postDelayed(this, 1500)  // 1.5s 一帧
+                scanHandler.postDelayed(this, 1500)
             }
         }
         scanHandler.post(screenReadRunnable!!)
+    }
+
+    /** 创建读屏专用资源（独立 recognizer/ImageReader/VirtualDisplay） */
+    private fun ensureScreenReadResources() {
+        if (screenReadRecognizer == null) {
+            screenReadRecognizer = TextRecognition.getClient(
+                com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions.Builder().build()
+            )
+            Log.d("FloatWindow", "读屏: 创建专用 recognizer")
+        }
+        if (screenReadImageReader == null || screenReadVirtualDisplay == null) {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getRealMetrics(metrics)
+            val w = metrics.widthPixels
+            val h = metrics.heightPixels
+            val density = metrics.densityDpi
+            try {
+                val reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
+                val vd = OcrBridge.mediaProjection!!.createVirtualDisplay(
+                    "screen_read_ocr", w, h, density,
+                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                    reader.surface, null, screenReadOcrHandler
+                )
+                screenReadImageReader = reader
+                screenReadVirtualDisplay = vd
+                Log.d("FloatWindow", "读屏: 创建专用 VirtualDisplay ${w}x${h}@${density}dpi")
+            } catch (e: Exception) {
+                Log.e("FloatWindow", "读屏: 创建 VirtualDisplay 失败: ${e.message}", e)
+            }
+        }
+    }
+
+    /** 释放读屏专用资源（关闭读屏搜题时调用） */
+    private fun releaseScreenReadResources() {
+        try { screenReadRecognizer?.close() } catch (_: Exception) {}
+        screenReadRecognizer = null
+        try { screenReadVirtualDisplay?.release() } catch (_: Exception) {}
+        screenReadVirtualDisplay = null
+        try { screenReadImageReader?.close() } catch (_: Exception) {}
+        screenReadImageReader = null
+        Log.d("FloatWindow", "读屏: 释放专用资源")
     }
 
     /** 停止读屏模式：停循环 + 移除小窗 + 释放帧缓存 + 恢复主浮窗 */
@@ -910,13 +955,15 @@ class FloatWindowService : Service() {
         if (OcrBridge.currentMode == OcrBridge.MODE_SCREEN_READ) {
             OcrBridge.currentMode = OcrBridge.MODE_NONE
         }
-        screenReadOcrInProgress = false  // ★ 重置 OCR 互斥锁（下次启动时重新可用）
+        screenReadOcrInProgress = false
         Log.d("FloatWindow", "stopScreenRead: 读屏模式停止")
         screenReadRunnable?.let { scanHandler.removeCallbacks(it) }
         screenReadRunnable = null
-        captureScreenTick = 0  // ★ 重置 tick 计数（下次启动时从 1 开始）
+        captureScreenTick = 0
         lastFrameThumb?.recycle()
         lastFrameThumb = null
+        // ★★ 释放读屏专用资源（与浮窗完全隔离）★★★
+        releaseScreenReadResources()
         // ★ 重置文字缓存和时间戳（下次启动 OCR 时重新识别）
         lastScreenReadText = ""
         lastScreenReadTime = 0L
@@ -1017,11 +1064,17 @@ class FloatWindowService : Service() {
     private fun captureScreenReadFrame() {
         // ★ 累积 tick 计数（每次调用都更新状态栏，确认 runnable 在跑）
         captureScreenTick++
-        Log.d("FloatWindow", "读屏 tick #$captureScreenTick（screenReadActive=$screenReadActive, reader=${ocrImageReader != null}）")
+        Log.d("FloatWindow", "读屏 tick #$captureScreenTick（screenReadActive=$screenReadActive, reader=${screenReadImageReader != null}）")
         screenReadStatusText?.text = "💓 第${captureScreenTick}次 tick..."
-        val reader = ocrImageReader ?: run {
-            Log.w("FloatWindow", "读屏: ocrImageReader == null（VirtualDisplay 未创建）")
-            screenReadStatusText?.text = "⚠ VirtualDisplay 未创建"
+        // ★ 用读屏专用 ImageReader（不与浮窗共享）
+        val reader = screenReadImageReader ?: run {
+            Log.w("FloatWindow", "读屏: screenReadImageReader == null")
+            screenReadStatusText?.text = "⚠ 读屏 VirtualDisplay 未创建"
+            return
+        }
+        val recognizer = screenReadRecognizer ?: run {
+            Log.w("FloatWindow", "读屏: screenReadRecognizer == null")
+            screenReadStatusText?.text = "⚠ 读屏 Recognizer 未初始化"
             return
         }
         val mySeq = ++ocrSeq
@@ -1100,34 +1153,34 @@ class FloatWindowService : Service() {
             // ★ OCR 互斥锁：process 调用前加锁，避免新一轮 process 抢占后 mySeq 永远丢弃
             screenReadOcrInProgress = true
             Log.d("FloatWindow", "读屏: process() 调用 mySeq=$mySeq ocrBitmap=${ocrBitmap.width}x${ocrBitmap.height}")
+            // ★★ 关键：使用读屏专用 recognizer（不与浮窗共享）★★★
             kotlin.runCatching {
-                serviceRecognizer.process(inputImage)
+                recognizer.process(inputImage)
                     .addOnSuccessListener { result ->
                         Log.d("FloatWindow", "读屏: addOnSuccessListener 触发 text.length=${result.text.length}")
-                        screenReadOcrInProgress = false  // 解锁
+                        screenReadOcrInProgress = false
                         if (mySeq != ocrSeq) return@addOnSuccessListener
                         if (result.text == lastScreenReadText) return@addOnSuccessListener
                         lastScreenReadText = result.text
-                        serviceOcrHandler.post { processScreenReadText(result.text) }
+                        screenReadOcrHandler.post { processScreenReadText(result.text) }
                     }
                     .addOnFailureListener { e ->
                         Log.w("FloatWindow", "读屏: addOnFailureListener 触发 ${e.javaClass.simpleName}: ${e.message}")
-                        screenReadOcrInProgress = false  // 解锁
+                        screenReadOcrInProgress = false
                         if (mySeq != ocrSeq) return@addOnFailureListener
                         Log.e("FloatWindow", "读屏 OCR 失败: ${e.javaClass.simpleName}: ${e.message}", e)
                         val causeClass = e.cause?.javaClass?.simpleName ?: "无"
                         val diagText = "${e.javaClass.simpleName}: ${e.message?.take(30) ?: "?"}\ncause: $causeClass\nOCR输入: ${ocrBitmap.width}x${ocrBitmap.height}"
-                        serviceOcrHandler.post {
+                        screenReadOcrHandler.post {
                             screenReadStatusText?.text = "✕ OCR 失败"
                             screenReadOcrPreview?.text = diagText.take(200)
                             android.widget.Toast.makeText(this@FloatWindowService, "OCR失败: ${e.javaClass.simpleName}", android.widget.Toast.LENGTH_LONG).show()
                         }
                     }
             }.onFailure { syncEx ->
-                // ★ 同步异常：process() 调用本身抛异常（InputImage 无效 / recognizer 未初始化）
                 Log.e("FloatWindow", "读屏 process() 同步异常: ${syncEx.javaClass.simpleName}: ${syncEx.message}", syncEx)
                 screenReadOcrInProgress = false
-                serviceOcrHandler.post {
+                screenReadOcrHandler.post {
                     screenReadStatusText?.text = "✕ OCR 同步异常"
                     screenReadOcrPreview?.text = "同步异常: ${syncEx.javaClass.simpleName}: ${syncEx.message?.take(50) ?: "?"}"
                     android.widget.Toast.makeText(this@FloatWindowService, "OCR同步异常: ${syncEx.message}", android.widget.Toast.LENGTH_LONG).show()
@@ -2179,9 +2232,11 @@ class FloatWindowService : Service() {
         super.onDestroy()
         continuousScanning = false
         screenReadActive = false
-        OcrBridge.currentMode = OcrBridge.MODE_NONE  // ★ 重置模式标记
+        OcrBridge.currentMode = OcrBridge.MODE_NONE
         scanHandler.removeCallbacksAndMessages(null)
         OcrBridge.isRunning = false
+        // ★ 读屏专用资源清理
+        releaseScreenReadResources()
         // ★ 读屏小窗/圆点清理（防止窗口泄漏）
         screenReadWindow?.let {
             try { windowManager.removeView(it) } catch (_: Exception) {}
@@ -2273,11 +2328,11 @@ class FloatWindowService : Service() {
                 restoreFloatWindow()
             }
             ACTION_STOP_SELF -> {
-                // ★ Android 14+ 前台服务必须在 stopService 之前 stopForeground（否则 onDestroy 不触发）
                 Log.d("FloatWindow", "ACTION_STOP_SELF 收到")
                 stopContinuousScan()
                 stopScreenRead()
-                OcrBridge.currentMode = OcrBridge.MODE_NONE  // ★ 重置模式标记
+                releaseScreenReadResources()
+                OcrBridge.currentMode = OcrBridge.MODE_NONE
                 // 释放 MediaProjection
                 try {
                     OcrBridge.mediaProjection?.stop()
@@ -2323,10 +2378,9 @@ class FloatWindowService : Service() {
                     projection.registerCallback(object : android.media.projection.MediaProjection.Callback() {
                         override fun onStop() {
                             Log.d("FloatWindow", "MediaProjection onStop")
-                            // 用户停止录屏时，自动停止 OCR 扫描
                             stopContinuousScan()
                             stopScreenRead()
-                            OcrBridge.currentMode = OcrBridge.MODE_NONE  // ★ 重置模式标记
+                            OcrBridge.currentMode = OcrBridge.MODE_NONE
                             ocrTopSwitch?.text = if (OcrBridge.mediaProjection == null) "🔓授权并扫描" else "🔄开始扫描"
                             statusDot?.let { d -> statusText?.let { t -> updateStatusUi(d, t, scanning = false) } }
                         }
