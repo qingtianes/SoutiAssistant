@@ -1368,7 +1368,8 @@ class FloatWindowService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.END
+            // ★ 默认位置改到屏幕右下角贴底（避开文档主体在屏幕中左的情况，涂白不覆盖文档）
+            gravity = Gravity.BOTTOM or Gravity.END
             x = dp(8)
             y = dp(80)
         }
