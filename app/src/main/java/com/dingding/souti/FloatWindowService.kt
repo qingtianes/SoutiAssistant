@@ -1099,11 +1099,18 @@ class FloatWindowService : Service() {
             )
             full.copyPixelsFromBuffer(buffer)
             image.close()
-            // ★ 诊断：保存原始截屏到 cacheDir（覆盖式只保留最近 3 张）
+            // ★ 诊断：保存原始截屏到 cacheDir + 主动 push 到 sdcard（让 adb pull 能立刻拿到）
             try {
-                val dumpFile = java.io.File(cacheDir, "ocr_dump_${System.currentTimeMillis() % 1000}.png")
+                val ts = System.currentTimeMillis() / 100
+                val dumpFile = java.io.File(cacheDir, "ocr_dump.png")
                 full.compress(android.graphics.Bitmap.CompressFormat.PNG, 80, java.io.FileOutputStream(dumpFile))
-            } catch (_: Exception) {}
+                // ★ 主动 push 到 sdcard（避免 run-as 权限问题）
+                val sdFile = java.io.File("/sdcard/ocr_dump_${ts % 100000}.png")
+                full.compress(android.graphics.Bitmap.CompressFormat.PNG, 80, java.io.FileOutputStream(sdFile))
+                Log.d("FloatWindow", "读屏: dump saved ${sdFile.absolutePath} (${full.width}x${full.height})")
+            } catch (e: Exception) {
+                Log.e("FloatWindow", "读屏: dump 保存失败: ${e.message}")
+            }
             // ★ 关键：截屏把答案小窗自己也截进去了！涂白小窗区域
             val win = screenReadWindow
             if (win != null) {
