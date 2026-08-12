@@ -885,6 +885,11 @@ class FloatWindowService : Service() {
         floatWasRunningBeforeScreenRead = (root != null)
         // 2. 若浮窗绿框扫描在跑，先停（避免两个扫描循环抢同一个 recognizer）
         if (continuousScanning) stopContinuousScan()
+        // ★★ 关键修复：释放浮窗的 VirtualDisplay + ImageReader！
+        //    Android MediaProjection 只允许一个 VirtualDisplay 实时收帧
+        //    浮窗和读屏同时有两个 VirtualDisplay → 读屏的 acquireLatestImage 拿不到帧 → OCR 永远空
+        //    必须先释放浮窗的 VD，读屏的 VD 才能成为唯一镜像收帧
+        releaseFloatWindowOcrResources()
         // 3. ★ 隐藏主浮窗（root 还在内存里，只 removeView，不销毁。停止读屏时恢复）
         if (root != null) {
             try { windowManager.removeView(root) } catch (_: Exception) {}
@@ -947,6 +952,15 @@ class FloatWindowService : Service() {
         Log.d("FloatWindow", "读屏: 释放专用资源")
     }
 
+    /** ★★ 释放浮窗的 VirtualDisplay + ImageReader（读屏启动时调用，MediaProjection 只允许一个 VD 收帧） */
+    private fun releaseFloatWindowOcrResources() {
+        try { ocrVirtualDisplay?.release() } catch (_: Exception) {}
+        ocrVirtualDisplay = null
+        try { ocrImageReader?.close() } catch (_: Exception) {}
+        ocrImageReader = null
+        Log.d("FloatWindow", "读屏: 已释放浮窗 VirtualDisplay/ImageReader（读屏 VD 独占收帧）")
+    }
+
     /** 停止读屏模式：停循环 + 移除小窗 + 释放帧缓存 + 恢复主浮窗 */
     private fun stopScreenRead() {
         if (!screenReadActive) return
@@ -984,6 +998,11 @@ class FloatWindowService : Service() {
         if (floatWasRunningBeforeScreenRead) {
             restoreFloatWindow()
             floatWasRunningBeforeScreenRead = false
+            // ★ 恢复浮窗 OCR 循环（读屏启动时释放了浮窗 VD，这里重建 + 恢复扫描）
+            //    startContinuousScan 内部会自动重新创建 VirtualDisplay（因为 ocrVirtualDisplay == null）
+            if (OcrBridge.mediaProjection != null && !continuousScanning) {
+                startContinuousScan()
+            }
         }
     }
 
