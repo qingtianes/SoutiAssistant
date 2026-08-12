@@ -872,10 +872,15 @@ class FloatWindowService : Service() {
         // ★ 标记当前模式为读屏（让主页轮询能区分显示）
         OcrBridge.currentMode = OcrBridge.MODE_SCREEN_READ
         Log.d("FloatWindow", "startScreenRead: 读屏模式启动")
+        // ★★ 根因修复：先停浮窗循环，再重建识别器！
+        //    浮窗搜题可能一直在跑（每2s process一次），如果直接复用同一个 serviceRecognizer 调 process()
+        //    → 浮窗最后一次异步 process() 还没完成 + 读屏新 process() 同时跑在同一个识别器上
+        //    → ML Kit 内部状态错乱 → Task 永久卡死（不回调 success/failure）
+        //    必须 close 旧的（中断浮窗残留 process）+ 新建独立识别器
+        if (continuousScanning) stopContinuousScan()  // 先停浮窗循环
+        recreateServiceRecognizer()                    // 再重建识别器（中断残留 process）
         // 1. ★ 记录主浮窗是否在跑（停止读屏时根据这个决定是否恢复）
         floatWasRunningBeforeScreenRead = (root != null)
-        // 2. 若浮窗绿框扫描在跑，先停（避免两个扫描循环抢 ImageReader）
-        if (continuousScanning) stopContinuousScan()
         // 3. ★ 隐藏主浮窗（root 还在内存里，只 removeView，不销毁。停止读屏时恢复）
         if (root != null) {
             try { windowManager.removeView(root) } catch (_: Exception) {}
