@@ -1099,6 +1099,11 @@ class FloatWindowService : Service() {
             )
             full.copyPixelsFromBuffer(buffer)
             image.close()
+            // ★ 诊断：保存原始截屏到 cacheDir（覆盖式只保留最近 3 张）
+            try {
+                val dumpFile = java.io.File(cacheDir, "ocr_dump_${System.currentTimeMillis() % 1000}.png")
+                full.compress(android.graphics.Bitmap.CompressFormat.PNG, 80, java.io.FileOutputStream(dumpFile))
+            } catch (_: Exception) {}
             // ★ 关键：截屏把答案小窗自己也截进去了！涂白小窗区域
             val win = screenReadWindow
             if (win != null) {
