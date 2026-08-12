@@ -1132,15 +1132,15 @@ class FloatWindowService : Service() {
             screenReadStatusText?.text = "🔄 OCR 中... diff=${(diffRatio * 100).toInt()}%"
             Log.d("FloatWindow", "读屏: diff=$diffRatio → OCR (${full.width}x${full.height})")
             // ★ 自适应反色：检测图片平均亮度，深色背景（黑底白字）自动反色成白底黑字
-            //    ML Kit 中文识别训练数据主要是白底黑字，深底浅字识别率极低（文本文档深色主题完全读不到）
             val avgBrightness = computeAverageBrightness(full)
             if (avgBrightness < 100) {
                 Log.d("FloatWindow", "读屏: 检测到深色背景(avg=$avgBrightness)，执行反色")
                 invertBitmap(full)
             }
-            // ★ 缩放到 ML Kit 中文识别器推荐尺寸 720x1280
-            val targetWidth = 720
-            val targetHeight = 1280
+            // ★ 缩放到 540x960（更小 → 文档里 13sp 文字占比更高 → ML Kit 识别率提升）
+            //    之前 720x1280 缩放后文字过小，文本文档完全读不到
+            val targetWidth = 540
+            val targetHeight = 960
             val scale = minOf(
                 targetWidth.toFloat() / full.width,
                 targetHeight.toFloat() / full.height
