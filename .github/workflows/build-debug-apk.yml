@@ -38,10 +38,11 @@ jobs:
       - name: Build debug APK (multi-ABI)
         # ★ 用相对路径调 gradle 8.13（不依赖 $RUNNER_TEMP，确保正确解析）
         run: ./gradle-8.13/bin/gradle assembleDebug --no-daemon
-      - name: Upload to v0.5 release (replace old x86_64-only APK)
+      - name: Upload to v0.7 release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v0.5-floatwindow-modules
+          tag_name: v0.7-screen-read-stable
+          name: v0.7 读屏搜题多题模式稳定版
           files: app/build/outputs/apk/debug/app-debug.apk
           overwrite: true
         env:
