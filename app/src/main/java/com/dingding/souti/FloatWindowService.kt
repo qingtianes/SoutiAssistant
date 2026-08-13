@@ -1142,9 +1142,9 @@ class FloatWindowService : Service() {
             } catch (e: Exception) {
                 Log.e("FloatWindow", "读屏: dump 保存失败: ${e.message}")
             }
-            // ★★★ 修复漏题：只涂白小窗顶部固定 UI（标题栏 28dp + 状态行 ≈ 50dp = 80dp）
-            //    之前涂白整个小窗矩形 → 被小窗覆盖的题目被抹掉 → 严重漏题（7题只识别2题）
-            //    现在结果区（卡片）不涂白 → OCR 能识别到小窗下方的屏幕内容
+            // ★★★ 修复涂白策略：全窗涂白（避免结果区文字污染OCR导致题号错位/漏题/模式抖动）
+            //    之前只涂白顶部 80dp：结果区卡片文字进入下一轮 OCR → "第1题 🎯 题干"被当成新题切分 → 错位
+            //    挡题问题靠"小窗默认右下角"+"拖动避开"解决（不是靠缩小涂白）
             val win = screenReadWindow
             if (win != null) {
                 val loc = IntArray(2)
@@ -1152,12 +1152,12 @@ class FloatWindowService : Service() {
                 val left = loc[0].coerceAtLeast(0)
                 val top = loc[1].coerceAtLeast(0)
                 val right = (loc[0] + win.width).coerceAtMost(full.width)
-                val whiteBottom = (top + dp(80)).coerceAtMost(full.height)  // 只涂白顶部 80dp
-                if (right > left && whiteBottom > top) {
+                val bottom = (top + win.height).coerceAtMost(full.height)  // ★ 全窗涂白
+                if (right > left && bottom > top) {
                     val canvas = android.graphics.Canvas(full)
                     val whitePaint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE }
-                    canvas.drawRect(left.toFloat(), top.toFloat(), right.toFloat(), whiteBottom.toFloat(), whitePaint)
-                    Log.d("FloatWindow", "读屏: 已涂白小窗顶部UI [$left,$top,$right,$whiteBottom]（结果区不涂白避免挡题）")
+                    canvas.drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), whitePaint)
+                    Log.d("FloatWindow", "读屏: 已涂白全窗 [$left,$top,$right,$bottom]（消除卡片文字污染OCR）")
                 }
             }
             // ★ 滚动检测（仅做日志，不阻塞 OCR）
@@ -1434,9 +1434,12 @@ class FloatWindowService : Service() {
         ).apply {
             // ★ 统一用 TOP|START（左上角锚定）：p.x=距左边缘距离，p.y=距顶边缘距离
             //    拖动 p.x/p.y 直接用 +dx/+dy；resize 左上角锚定不动，◢ 跟手指缩放
+            //    ★★ 默认位置改到屏幕右下角（避开中央题目区，全窗涂白时不挡题）
             gravity = Gravity.TOP or Gravity.START
-            x = dp(8)
-            y = dp(80)
+            val dispW = resources.displayMetrics.widthPixels
+            val dispH = resources.displayMetrics.heightPixels
+            x = (dispW - dp(260) - dp(8)).coerceAtLeast(0)   // 贴右缘 - 小窗宽 - 边距
+            y = (dispH - dp(360) - dp(100)).coerceAtLeast(0) // 贴底缘 - 小窗高 - 边距（避开导航栏）
         }
         try {
             windowManager.addView(win, p)
@@ -1538,7 +1541,9 @@ class FloatWindowService : Service() {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = dp(8)
+            val dispW2 = resources.displayMetrics.widthPixels
+            val dispH2 = resources.displayMetrics.heightPixels
+            x = (dispW2 - dp(36) - dp(8)).coerceAtLeast(0)   // 圆点贴右缘
             y = dp(80)
         }
         // 创建 36dp 圆点
