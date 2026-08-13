@@ -1979,14 +1979,14 @@ class FloatWindowService : Service() {
             screenReadModeText?.setTextColor(Color.parseColor("#9FE1CB"))  // 浅绿
             val allResults = mutableListOf<List<SearchResult>>()
             questions.forEach { seg ->
-                // ★★ 修复：截取选项前 + 去括号 + 去"依据/根据《...》"前缀 → 纯区分题干
+                // ★★ 修复：截取选项前 + 去括号 + 去"开头到《...》"前缀 → 纯区分题干
+                //    通用方案：去掉"开头到第一个《...》结束"，不依赖具体前缀词（依据/根据/在/我司 等都适用）
                 //    "依据《...受限空间...》涂刷具有挥发性..." → "涂刷具有挥发性..."
-                //    同前缀题（受限空间3题）去掉共同前缀后，后半才是区分特征，LCS 才能正确区分
                 val optMatch = Regex("[A-E][.、．、)）]").find(seg)
                 val stemPart = if (optMatch != null) seg.substring(0, optMatch.range.first) else seg
                 val stem = stemPart
                     .replace(Regex("[（(][^（）()]*[）)]"), "")          // 去括号及内容
-                    .replace(Regex("[依据根据]《[^》]+》"), "")            // 去"依据/根据《...》"前缀
+                    .replace(Regex("^[^《]*《[^》]*》"), "")              // 去"开头到《...》"（通用，不硬编码前缀词）
                     .replace(Regex("^[,，。.、\\s]+"), "")                // 去开头标点
                     .replace(Regex("\\s+"), "")
                     .trim()
@@ -2041,8 +2041,9 @@ class FloatWindowService : Service() {
             setTextColor(Color.parseColor("#FFFFFF"))  // 白字更醒目
             setPadding(dp(4), dp(2), dp(4), dp(6))
         })
-        val seenIds = HashSet<Long>()        // ★ 去重（记录已输出的题库题 ID）
-        val firstIdxMap = HashMap<Long, Int>() // ★ 记录每个题库题第一次出现的索引（用于"已在第 N 题匹配"提示）
+        // ★★ 去掉去重：宁可重复显示也不能不显示（用户明确要求）
+        //    之前按 question.id 去重，同前缀题（受限空间/能量隔离系列）LCS 前缀占优匹配到同一题 → 误判重复 → 漏题
+        //    读屏搜题没有手动兜底，考试也不允许切换应用，所以每题都必须输出，即使内容重复
         questions.forEachIndexed { idx, seg ->
             val results = resultsList[idx]
             val title = "第 ${idx + 1} 题"
@@ -2056,18 +2057,6 @@ class FloatWindowService : Service() {
                 return@forEachIndexed
             }
             val best = results[0]
-            // ★ 去重：已输出过的题库题显示"已在第N题匹配"（不静默吞掉）
-            if (!seenIds.add(best.question.id)) {
-                val firstIdx = firstIdxMap[best.question.id] ?: idx
-                container.addView(TextView(this).apply {
-                    text = "$title 已在第 ${firstIdx + 1} 题匹配（OCR切分重复）"
-                    textSize = 10f
-                    setTextColor(Color.parseColor("#888888"))  // 灰
-                    setPadding(dp(4), dp(2), dp(4), dp(2))
-                })
-                return@forEachIndexed
-            }
-            firstIdxMap[best.question.id] = idx
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = GradientDrawable().apply {
