@@ -1408,9 +1408,9 @@ class FloatWindowService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
-            // ★ 统一用 TOP|END（右上角锚定）：p.x=距右边缘距离，p.y=距顶边缘距离
-            //    之前 BOTTOM|END 导致拖动 p.y 方向反了 + 恢复函数用 TOP|END 不一致
-            gravity = Gravity.TOP or Gravity.END
+            // ★ 统一用 TOP|START（左上角锚定）：p.x=距左边缘距离，p.y=距顶边缘距离
+            //    拖动 p.x/p.y 直接用 +dx/+dy；resize 左上角锚定不动，◢ 跟手指缩放
+            gravity = Gravity.TOP or Gravity.START
             x = dp(8)
             y = dp(80)
         }
@@ -1449,8 +1449,9 @@ class FloatWindowService : Service() {
                     MotionEvent.ACTION_MOVE -> {
                         val dx = (event.rawX - startTX).toInt()
                         val dy = (event.rawY - startTY).toInt()
-                        // ★ gravity = TOP|END 下：p.x 是相对右边缘的距离，所以手指向右 dx>0 应让 p.x 减少（窗口向右移）
-                        p.x = initX - dx
+                        // ★ gravity = TOP|START（左上角锚定）：p.x=距左边缘距离，p.y=距顶边缘距离
+                        //    手指向右 dx>0 → p.x 增加；手指向下 dy>0 → p.y 增加（最直觉）
+                        p.x = initX + dx
                         p.y = initY + dy
                         try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
                     }
@@ -1482,9 +1483,9 @@ class FloatWindowService : Service() {
                         val newH = (initH + dy).coerceIn(dp(240), dp(700))
                         p.width = newW
                         p.height = newH
-                        // ★★★ 正确 resize（TOP|END 右上角锚定）★★★
-                        //    窗口右上角（p.x, p.y）固定不动，只改 width/height
-                        //    拖 ◢ 向右下 dx>0,dy>0 → 窗口右下扩（◢ 跟手指）
+                        // ★★★ 正确 resize（TOP|START 左上角锚定）★★★
+                        //    窗口左上角（p.x, p.y）固定不动，只改 width/height
+                        //    拖 ◢ 向右下 dx>0,dy>0 → 窗口右下扩（◢ 跟手指缩放）
                         //    拖 ◢ 向左上 dx<0,dy<0 → 窗口右下缩
                         //    p.x 和 p.y 不变！
                         try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
@@ -1628,7 +1629,7 @@ class FloatWindowService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or Gravity.END
+            gravity = Gravity.TOP or Gravity.START  // ★ 统一左上角锚定
             x = savedX
             y = savedY
         }
