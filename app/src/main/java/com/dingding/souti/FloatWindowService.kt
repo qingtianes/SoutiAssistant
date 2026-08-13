@@ -1538,25 +1538,36 @@ class FloatWindowService : Service() {
                 setColor(Color.parseColor("#E61D9E75"))
                 cornerRadius = dp(18).toFloat()
             }
-            setOnClickListener {
-                // 恢复小窗
-                try { windowManager.removeView(this) } catch (_: Exception) {}
-                restoreScreenReadWindow()
-            }
-            // ★ 拖动：圆点可移动到任意位置（避免挡题）
+            // ★ 修复：去掉 setOnClickListener（与 OnTouchListener 冲突导致点击失效）
+            //    改用 OnTouchListener 区分"点击"（恢复）和"拖动"（移动）
             var initX = 0; var initY = 0
             var startTX = 0f; var startTY = 0f
-            setOnTouchListener { _, event ->
+            var isDragging = false
+            setOnTouchListener { v, event ->
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> {
                         initX = dotP.x; initY = dotP.y
                         startTX = event.rawX; startTY = event.rawY
+                        isDragging = false
                         true
                     }
                     MotionEvent.ACTION_MOVE -> {
-                        dotP.x = initX + (event.rawX - startTX).toInt()
-                        dotP.y = initY + (event.rawY - startTY).toInt()
-                        try { windowManager.updateViewLayout(this, dotP) } catch (_: Exception) {}
+                        val dx = (event.rawX - startTX).toInt()
+                        val dy = (event.rawY - startTY).toInt()
+                        if (Math.abs(dx) > 12 || Math.abs(dy) > 12) isDragging = true
+                        if (isDragging) {
+                            dotP.x = initX + dx
+                            dotP.y = initY + dy
+                            try { windowManager.updateViewLayout(v, dotP) } catch (_: Exception) {}
+                        }
+                        true
+                    }
+                    MotionEvent.ACTION_UP -> {
+                        if (!isDragging) {
+                            // 点击（未拖动）→ 恢复读屏小窗
+                            try { windowManager.removeView(v) } catch (_: Exception) {}
+                            restoreScreenReadWindow()
+                        }
                         true
                     }
                     else -> false
