@@ -1140,7 +1140,9 @@ class FloatWindowService : Service() {
             } catch (e: Exception) {
                 Log.e("FloatWindow", "读屏: dump 保存失败: ${e.message}")
             }
-            // ★ 关键：截屏把答案小窗自己也截进去了！涂白小窗区域
+            // ★★★ 修复漏题：只涂白小窗顶部固定 UI（标题栏 28dp + 状态行 ≈ 50dp = 80dp）
+            //    之前涂白整个小窗矩形 → 被小窗覆盖的题目被抹掉 → 严重漏题（7题只识别2题）
+            //    现在结果区（卡片）不涂白 → OCR 能识别到小窗下方的屏幕内容
             val win = screenReadWindow
             if (win != null) {
                 val loc = IntArray(2)
@@ -1148,12 +1150,12 @@ class FloatWindowService : Service() {
                 val left = loc[0].coerceAtLeast(0)
                 val top = loc[1].coerceAtLeast(0)
                 val right = (loc[0] + win.width).coerceAtMost(full.width)
-                val bottom = (loc[1] + win.height).coerceAtMost(full.height)
-                if (right > left && bottom > top) {
+                val whiteBottom = (top + dp(80)).coerceAtMost(full.height)  // 只涂白顶部 80dp
+                if (right > left && whiteBottom > top) {
                     val canvas = android.graphics.Canvas(full)
                     val whitePaint = android.graphics.Paint().apply { color = android.graphics.Color.WHITE }
-                    canvas.drawRect(left.toFloat(), top.toFloat(), right.toFloat(), bottom.toFloat(), whitePaint)
-                    Log.d("FloatWindow", "读屏: 已涂白小窗区域 [$left,$top,$right,$bottom]")
+                    canvas.drawRect(left.toFloat(), top.toFloat(), right.toFloat(), whiteBottom.toFloat(), whitePaint)
+                    Log.d("FloatWindow", "读屏: 已涂白小窗顶部UI [$left,$top,$right,$whiteBottom]（结果区不涂白避免挡题）")
                 }
             }
             // ★ 滚动检测（仅做日志，不阻塞 OCR）
