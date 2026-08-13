@@ -1201,11 +1201,16 @@ class FloatWindowService : Service() {
                     .addOnSuccessListener { result ->
                         Log.d("FloatWindow", "读屏: addOnSuccessListener 触发 text.length=${result.text.length}")
                         screenReadOcrInProgress = false
-                        // ★★★ P0 根因修复：删除 if (mySeq != ocrSeq) 丢弃检查 ★★★
+                        // ★★★ 按 TextBlock 的 y 坐标（boundingBox.top）排序，保证题目自上而下顺序 ★★★
+                        //    之前用 result.text（ML Kit 内部拼接），TextBlock 排列顺序不保证严格自上而下
+                        //    多题场景下顺序会乱。这里按 boundingBox.top 升序排序后再拼接。
+                        val orderedText = result.textBlocks
+                            .sortedBy { it.boundingBox?.top ?: Int.MAX_VALUE }
+                            .joinToString("\n") { it.text }
                         // ★ P3-1 修复：空文本也走 processScreenReadText（让状态栏显示"未识别到文字"）
-                        if (result.text.isNotEmpty() && result.text == lastScreenReadText) return@addOnSuccessListener
-                        lastScreenReadText = result.text
-                        screenReadOcrHandler.post { processScreenReadText(result.text) }
+                        if (orderedText.isNotEmpty() && orderedText == lastScreenReadText) return@addOnSuccessListener
+                        lastScreenReadText = orderedText
+                        screenReadOcrHandler.post { processScreenReadText(orderedText) }
                         // ★ P2-3 修复：OCR 完成后回收 bitmap（InputImage.fromBitmap 不持有所有权）
                         try { ocrBitmap.recycle() } catch (_: Exception) {}
                     }
