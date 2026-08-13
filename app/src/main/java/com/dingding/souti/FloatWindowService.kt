@@ -1208,11 +1208,10 @@ class FloatWindowService : Service() {
                     .addOnSuccessListener { result ->
                         Log.d("FloatWindow", "读屏: addOnSuccessListener 触发 text.length=${result.text.length}")
                         screenReadOcrInProgress = false
-                        // ★★★ 按 TextLine 的 y 坐标（boundingBox.top）排序，保证题目自上而下顺序 ★★★
-                        //    之前用 result.text（ML Kit 内部拼接），顺序不保证自上而下
-                        //    这里 flatMap 展开所有 TextLine（单行），按 top 升序排序后拼接
+                        // ★★★ 按 TextBlock（段落）的 y 坐标排序，保证题目自上而下顺序 ★★★
+                        //    之前 flatMap TextLine（逐行）会拆碎一行 → 导致重复/漏题
+                        //    回退到 TextBlock 粒度（段落是完整单元），按 boundingBox.top 排序
                         val orderedText = result.textBlocks
-                            .flatMap { block -> block.lines }
                             .sortedBy { it.boundingBox?.top ?: Int.MAX_VALUE }
                             .joinToString("\n") { it.text }
                         // ★ P3-1 修复：空文本也走 processScreenReadText（让状态栏显示"未识别到文字"）
@@ -2009,6 +2008,7 @@ class FloatWindowService : Service() {
             setTextColor(Color.parseColor("#FFFFFF"))  // 白字更醒目
             setPadding(dp(4), dp(2), dp(4), dp(6))
         })
+        val seenIds = HashSet<Long>()  // ★ 去重：防止两个题目段匹配到同一题库题导致重复输出
         questions.forEachIndexed { idx, seg ->
             val results = resultsList[idx]
             val title = "第 ${idx + 1} 题"
@@ -2022,6 +2022,10 @@ class FloatWindowService : Service() {
                 return@forEachIndexed
             }
             val best = results[0]
+            // ★ 去重：已输出过的题库题跳过（OCR 切分可能让相邻题匹配到同一题）
+            if (!seenIds.add(best.question.id)) {
+                return@forEachIndexed
+            }
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = GradientDrawable().apply {
