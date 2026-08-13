@@ -1969,7 +1969,7 @@ class FloatWindowService : Service() {
         }
         if (questions.size >= 2) {
             // ── 多题模式：每题独立匹配，按屏幕顺序输出 ──
-            screenReadModeText?.text = "· 多题"
+            screenReadModeText?.text = "· ${questions.size}题"
             screenReadModeText?.setTextColor(Color.parseColor("#9FE1CB"))  // 浅绿
             val allResults = mutableListOf<List<SearchResult>>()
             questions.forEach { seg ->
@@ -1983,7 +1983,7 @@ class FloatWindowService : Service() {
             renderScreenReadMulti(container, questions, allResults)
         } else {
             // ── 单题模式：整段作为查询词（无多个题号结构）──
-            screenReadModeText?.text = "· 单题"
+            screenReadModeText?.text = "· 1题"
             screenReadModeText?.setTextColor(Color.parseColor("#FAC775"))  // 黄（提示只有一题候选）
             val results = bank.search(cleaned, limit = 5)
             Log.d("FloatWindow", "读屏单题匹配: ${results.size} 条")
