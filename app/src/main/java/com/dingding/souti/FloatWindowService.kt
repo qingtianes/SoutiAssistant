@@ -1191,8 +1191,9 @@ class FloatWindowService : Service() {
                 Log.d("FloatWindow", "读屏: 检测到深色背景(avg=$avgBrightness)，执行反色")
                 invertBitmap(cropped)
             }
-            // ★ 缩放到 720 宽（浮窗 OCR 验证 ML Kit 接受此尺寸），高度按比例
-            val targetWidth = 720
+            // ★ 缩放到 1080 宽（之前 720 太小：13sp 文字缩到 14.6px 高，ML Kit 中文要求≥24px → 错字"呋喃→味喃""分数→分教" + 漏题号）
+            //    1080 宽 → 文字 21.9px 高，接近 ML Kit 下限，识别率显著提升
+            val targetWidth = 1080
             val scale = targetWidth.toFloat() / cropped.width
             val ocrBitmap = Bitmap.createScaledBitmap(
                 cropped,
@@ -2004,10 +2005,11 @@ class FloatWindowService : Service() {
      * 3. 若题号太少（<2）→ 退化单题（整段）
      */
     private fun splitScreenReadQuestions(text: String): List<String> {
-        // ★★ 修复：按"行首数字."切分（题号必须在行首），避免题目内容里的"1.0MPa"等数字被误判为题号
-        //    题号格式覆盖：1. 1、 1． 1) 1） 1: 1： 等（OCR 常见变体）
+        // ★★ 修复：按"行首数字+标点+非数字"切分（题号后必须跟非数字，排除"0.5%-10.5%"小数被误判为题号）
+        //    之前正则 ^\d{1,3}[标点] 会把选项里的"0.5%"的"0."当成题号 → 切分[1]="0.5%-10.5% B 1.0%-9."
         val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-        val numRe = Regex("^\\d{1,3}[.、．、)）:：]")
+        // 题号锚点：数字 + 标点 + 后跟非数字（(?!\d) 负向断言）
+        val numRe = Regex("^\\d{1,3}[.、．、)）:：](?!\\d)")
         val questions = mutableListOf<String>()
         val current = StringBuilder()
         for (line in lines) {
