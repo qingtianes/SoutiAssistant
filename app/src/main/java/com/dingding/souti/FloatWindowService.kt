@@ -1879,37 +1879,31 @@ class FloatWindowService : Service() {
         val cleaned = text.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
         Log.d("FloatWindow", "读屏 OCR(${cleaned.length}字): ${cleaned.take(80)}...")
         container.removeAllViews()
-        if (cleaned.length <= 300) {
-            // ── 单题模式：整段作为查询词 ──
-            val results = bank.search(cleaned, limit = 5)
-            Log.d("FloatWindow", "读屏单题匹配: ${results.size} 条")
-            renderScreenReadResults(container, results, isMulti = false)
-        } else {
-            // ── 多题模式：按结构切分 ──
-            val questions = splitScreenReadQuestions(text)
-            // ★ 诊断日志：输出切分出的每道题前 20 字，看顺序是否 = 屏幕自上而下
-            Log.d("FloatWindow", "读屏多题切分: ${questions.size} 段")
-            questions.forEachIndexed { i, q ->
-                Log.d("FloatWindow", "  切分[$i]: ${q.take(20)}")
-            }
-            if (questions.size <= 1) {
-                // 切分失败（无题号结构）→ 仍按单题处理
-                val results = bank.search(cleaned, limit = 5)
-                renderScreenReadResults(container, results, isMulti = false)
-                return
-            }
-            // 每段独立匹配，按屏幕顺序收集
+        // ★★ 修复：不依赖字数阈值判断单题/多题，而是直接看"能否切分出多道题" ★★
+        //    之前 cleaned.length<=300 判断：7题场景 OCR 漏字导致<=300 → 误走单题模式
+        //    单题模式 renderScreenReadResults 的 results 是相关度降序 → 用户看到"相关度递减"
+        val questions = splitScreenReadQuestions(text)
+        Log.d("FloatWindow", "读屏多题切分: ${questions.size} 段")
+        questions.forEachIndexed { i, q ->
+            Log.d("FloatWindow", "  切分[$i]: ${q.take(20)}")
+        }
+        if (questions.size >= 2) {
+            // ── 多题模式：每题独立匹配，按屏幕顺序输出 ──
             val allResults = mutableListOf<List<SearchResult>>()
             questions.forEach { seg ->
                 val parenIdx = maxOf(seg.lastIndexOf('('), seg.lastIndexOf('（'))
                 val stem = if (parenIdx > 3) seg.substring(0, parenIdx).trim() else seg.trim()
                 val r = if (stem.isNotBlank()) bank.search(stem, limit = 3) else emptyList()
-                // ★ 诊断日志：每题匹配的 best stem + score
                 val bestScore = r.firstOrNull()?.score ?: 0
                 Log.d("FloatWindow", "  匹配 stem='${stem.take(20)}' best=${r.firstOrNull()?.question?.stem?.take(20) ?: "无"} score=$bestScore")
                 allResults.add(r)
             }
             renderScreenReadMulti(container, questions, allResults)
+        } else {
+            // ── 单题模式：整段作为查询词（无多个题号结构）──
+            val results = bank.search(cleaned, limit = 5)
+            Log.d("FloatWindow", "读屏单题匹配: ${results.size} 条")
+            renderScreenReadResults(container, results, isMulti = false)
         }
     }
 
@@ -1922,9 +1916,9 @@ class FloatWindowService : Service() {
      */
     private fun splitScreenReadQuestions(text: String): List<String> {
         // ★★ 修复：按"行首数字."切分（题号必须在行首），避免题目内容里的"1.0MPa"等数字被误判为题号
-        //    之前正则匹配任意位置的"数字."，导致乱序；且 seg.length>=8 丢弃短段导致漏题
+        //    题号格式覆盖：1. 1、 1． 1) 1） 1: 1： 等（OCR 常见变体）
         val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-        val numRe = Regex("^\\d{1,3}[.、．、]")
+        val numRe = Regex("^\\d{1,3}[.、．、)）:：]")
         val questions = mutableListOf<String>()
         val current = StringBuilder()
         for (line in lines) {
