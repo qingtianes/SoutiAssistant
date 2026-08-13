@@ -97,6 +97,8 @@ class FloatWindowService : Service() {
     private var screenReadStatusText: TextView? = null
     /** ★ OCR 原文预览（截短显示，2 行） */
     private var screenReadOcrPreview: TextView? = null
+    /** ★ 模式指示标签（"单题"/"多题"，processScreenReadText 里更新） */
+    private var screenReadModeText: TextView? = null
     /** 读屏模式扫描循环 Runnable */
     private var screenReadRunnable: Runnable? = null
     /** ★ 读屏模式扫描循环 tick 计数（用于诊断"runnable 是否真的在跑"） */
@@ -1329,6 +1331,14 @@ class FloatWindowService : Service() {
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.parseColor("#FFFFFF"))
         })
+        // ★ 模式指示（单题 = 整段匹配，多题 = 按题号切分），processScreenReadText 里更新
+        val modeText = TextView(this).apply {
+            text = ""
+            textSize = 10f
+            setTextColor(Color.parseColor("#9FE1CB"))  // 浅绿
+            setPadding(dp(6), dp(0), dp(4), dp(0))
+        }
+        titleBar.addView(modeText)
         titleBar.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
         // 暂停/继续按钮
         val pauseBtn = TextView(this).apply {
@@ -1439,6 +1449,7 @@ class FloatWindowService : Service() {
         screenReadContainer = container
         screenReadStatusText = statusText  // ★ OCR 状态行引用
         screenReadOcrPreview = ocrPreview  // ★ OCR 原文预览引用
+        screenReadModeText = modeText      // ★ 模式指示标签引用
         bindScreenReadDragAndResize(win, titleBar, resizeHandle, p)
         Log.d("FloatWindow", "读屏小窗已创建 260x360dp")
     }
@@ -1612,6 +1623,14 @@ class FloatWindowService : Service() {
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.WHITE)
         })
+        // ★ 模式指示标签（恢复时也补上）
+        val modeText = TextView(this).apply {
+            text = ""
+            textSize = 10f
+            setTextColor(Color.parseColor("#9FE1CB"))
+            setPadding(dp(6), dp(0), dp(4), dp(0))
+        }
+        titleBar.addView(modeText)
         titleBar.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
         val pauseBtn = TextView(this).apply {
             text = if (screenReadActive) "⏸" else "▶"
@@ -1708,6 +1727,7 @@ class FloatWindowService : Service() {
         screenReadContainer = container
         screenReadStatusText = statusText  // ★ 恢复状态栏引用（之前漏了）
         screenReadOcrPreview = ocrPreview  // ★ 恢复预览引用（之前漏了）
+        screenReadModeText = modeText      // ★ 恢复模式标签引用
         bindScreenReadDragAndResize(win, titleBar, resizeHandle, p)
     }
 
@@ -1949,6 +1969,8 @@ class FloatWindowService : Service() {
         }
         if (questions.size >= 2) {
             // ── 多题模式：每题独立匹配，按屏幕顺序输出 ──
+            screenReadModeText?.text = "· 多题"
+            screenReadModeText?.setTextColor(Color.parseColor("#9FE1CB"))  // 浅绿
             val allResults = mutableListOf<List<SearchResult>>()
             questions.forEach { seg ->
                 val parenIdx = maxOf(seg.lastIndexOf('('), seg.lastIndexOf('（'))
@@ -1961,6 +1983,8 @@ class FloatWindowService : Service() {
             renderScreenReadMulti(container, questions, allResults)
         } else {
             // ── 单题模式：整段作为查询词（无多个题号结构）──
+            screenReadModeText?.text = "· 单题"
+            screenReadModeText?.setTextColor(Color.parseColor("#FAC775"))  // 黄（提示只有一题候选）
             val results = bank.search(cleaned, limit = 5)
             Log.d("FloatWindow", "读屏单题匹配: ${results.size} 条")
             renderScreenReadResults(container, results, isMulti = false)
