@@ -2039,7 +2039,8 @@ class FloatWindowService : Service() {
             setTextColor(Color.parseColor("#FFFFFF"))  // 白字更醒目
             setPadding(dp(4), dp(2), dp(4), dp(6))
         })
-        val seenIds = HashSet<Long>()  // ★ 去重：防止两个题目段匹配到同一题库题导致重复输出
+        val seenIds = HashSet<Long>()        // ★ 去重（记录已输出的题库题 ID）
+        val firstIdxMap = HashMap<Long, Int>() // ★ 记录每个题库题第一次出现的索引（用于"已在第 N 题匹配"提示）
         questions.forEachIndexed { idx, seg ->
             val results = resultsList[idx]
             val title = "第 ${idx + 1} 题"
@@ -2053,10 +2054,18 @@ class FloatWindowService : Service() {
                 return@forEachIndexed
             }
             val best = results[0]
-            // ★ 去重：已输出过的题库题跳过（OCR 切分可能让相邻题匹配到同一题）
+            // ★ 去重：已输出过的题库题显示"已在第N题匹配"（不静默吞掉）
             if (!seenIds.add(best.question.id)) {
+                val firstIdx = firstIdxMap[best.question.id] ?: idx
+                container.addView(TextView(this).apply {
+                    text = "$title 已在第 ${firstIdx + 1} 题匹配（OCR切分重复）"
+                    textSize = 10f
+                    setTextColor(Color.parseColor("#888888"))  // 灰
+                    setPadding(dp(4), dp(2), dp(4), dp(2))
+                })
                 return@forEachIndexed
             }
+            firstIdxMap[best.question.id] = idx
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 background = GradientDrawable().apply {
