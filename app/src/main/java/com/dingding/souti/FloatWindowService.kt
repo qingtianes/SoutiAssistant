@@ -1002,6 +1002,13 @@ class FloatWindowService : Service() {
                 startContinuousScan()
             }
             floatScanningBeforeScreenRead = false
+        } else {
+            // ★★ 修复：读屏 ✕ 关闭且无浮窗要恢复 → 停止 MediaProjection（结束系统录屏状态）
+            //    之前 ✕ 关闭只停读屏循环，MediaProjection 还在录屏，系统录屏图标不消失
+            try { OcrBridge.mediaProjection?.stop() } catch (_: Exception) {}
+            OcrBridge.mediaProjection = null
+            OcrBridge.isRunning = false
+            Log.d("FloatWindow", "读屏关闭：已停止 MediaProjection 录屏")
         }
     }
 
@@ -1502,7 +1509,7 @@ class FloatWindowService : Service() {
         })
     }
 
-    /** 读屏小窗最小化：缩成屏幕边缘小圆点（可点恢复），不打扰作答 */
+    /** 读屏小窗最小化：缩成屏幕边缘小圆点（可拖动 + 可点恢复），不打扰作答 */
     private fun minimizeScreenReadWindow() {
         val w = screenReadWindow ?: return
         val p = screenReadParams ?: return
@@ -1511,6 +1518,17 @@ class FloatWindowService : Service() {
         try { windowManager.removeView(w) } catch (_: Exception) {}
         screenReadWindow = null
         screenReadParams = null
+        // ★ 圆点参数（TOP|START 左上角锚定，可拖动）
+        val dotP = WindowManager.LayoutParams(
+            dp(36), dp(36),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.TRANSLUCENT
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            x = dp(8)
+            y = dp(80)
+        }
         // 创建 36dp 圆点
         val dot = TextView(this).apply {
             text = "📖"
@@ -1525,16 +1543,25 @@ class FloatWindowService : Service() {
                 try { windowManager.removeView(this) } catch (_: Exception) {}
                 restoreScreenReadWindow()
             }
-        }
-        val dotP = WindowManager.LayoutParams(
-            dp(36), dp(36),
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.END
-            x = dp(8)
-            y = screenReadSavedRect[1]
+            // ★ 拖动：圆点可移动到任意位置（避免挡题）
+            var initX = 0; var initY = 0
+            var startTX = 0f; var startTY = 0f
+            setOnTouchListener { _, event ->
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        initX = dotP.x; initY = dotP.y
+                        startTX = event.rawX; startTY = event.rawY
+                        true
+                    }
+                    MotionEvent.ACTION_MOVE -> {
+                        dotP.x = initX + (event.rawX - startTX).toInt()
+                        dotP.y = initY + (event.rawY - startTY).toInt()
+                        try { windowManager.updateViewLayout(this, dotP) } catch (_: Exception) {}
+                        true
+                    }
+                    else -> false
+                }
+            }
         }
         try {
             windowManager.addView(dot, dotP)
@@ -1610,6 +1637,25 @@ class FloatWindowService : Service() {
         }
         titleBar.addView(closeBtn)
         win.addView(titleBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)))
+        // ── ★ OCR 状态栏（恢复时补上，之前漏了导致状态栏消失）──
+        val statusText = TextView(this).apply {
+            text = "🔄 已恢复，等待识别..."
+            textSize = 11f
+            setTextColor(Color.parseColor("#FAC775"))  // 黄：识别中
+            setPadding(dp(4), dp(2), dp(4), dp(0))
+        }
+        val ocrPreview = TextView(this).apply {
+            text = ""
+            textSize = 9f
+            setTextColor(Color.parseColor("#CCCCCC"))
+            maxLines = 2
+            ellipsize = TextUtils.TruncateAt.END
+            setPadding(dp(4), dp(0), dp(4), dp(4))
+        }
+        val statusBar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
+        statusBar.addView(statusText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        statusBar.addView(ocrPreview, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
+        win.addView(statusBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
         val container = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         container.addView(TextView(this).apply {
             text = "正在识别屏幕..."
@@ -1648,6 +1694,8 @@ class FloatWindowService : Service() {
         screenReadWindow = win
         screenReadParams = p
         screenReadContainer = container
+        screenReadStatusText = statusText  // ★ 恢复状态栏引用（之前漏了）
+        screenReadOcrPreview = ocrPreview  // ★ 恢复预览引用（之前漏了）
         bindScreenReadDragAndResize(win, titleBar, resizeHandle, p)
     }
 
