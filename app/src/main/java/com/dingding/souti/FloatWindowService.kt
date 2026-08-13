@@ -1979,17 +1979,11 @@ class FloatWindowService : Service() {
             screenReadModeText?.setTextColor(Color.parseColor("#9FE1CB"))  // 浅绿
             val allResults = mutableListOf<List<SearchResult>>()
             questions.forEach { seg ->
-                // ★★ 修复：取"第一个"括号（不是 lastIndexOf 最后一个），题干在第一个括号前
-                //    之前 lastIndexOf 取最后括号，多题段里选项含括号时取错 → 卡片张冠李戴
-                val a = seg.indexOf('(')
-                val b = seg.indexOf('（')
-                val parenIdx = when {
-                    a < 0 && b < 0 -> -1
-                    a < 0 -> b
-                    b < 0 -> a
-                    else -> minOf(a, b)
-                }
-                val stem = if (parenIdx > 0) seg.substring(0, parenIdx).trim() else seg.trim()
+                // ★★ 修复：去掉括号及其内容得到完整题干（不是截断括号前）
+                //    "下列（ ）是线型橡胶" → "下列是线型橡胶"（之前截断成"下列"太短匹配不到）
+                val stem = seg.replace(Regex("[（(][^（）()]*[）)]"), "")
+                    .replace(Regex("\\s+"), "")
+                    .trim()
                 val r = if (stem.isNotBlank()) bank.search(stem, limit = 3) else emptyList()
                 val bestScore = r.firstOrNull()?.score ?: 0
                 Log.d("FloatWindow", "  匹配 stem='${stem.take(20)}' best=${r.firstOrNull()?.question?.stem?.take(20) ?: "无"} score=$bestScore")

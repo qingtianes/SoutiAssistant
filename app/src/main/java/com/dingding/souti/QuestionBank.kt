@@ -233,11 +233,16 @@ class QuestionBank(context: Context) {
      */
     private fun scoreMatch(query: String, stem: String): Int {
         if (query.isBlank() || stem.isBlank()) return 0
+        // ★ 比较前都去掉括号、空格（"下列（ ）是线型橡胶" vs "下列是线型橡胶" → 去括号后一致）
+        //    浮窗 query 是"括号前题干"本来就无括号，去括号后不变，不影响浮窗
+        val q = query.replace(Regex("[（()）]"), "").replace(Regex("\\s+"), "")
+        val s = stem.replace(Regex("[（()）]"), "").replace(Regex("\\s+"), "")
+        if (q.isBlank() || s.isBlank()) return 0
         var score = 0
         // 完全包含 → 满分
-        if (query.length >= 4 && (stem.contains(query) || query.contains(stem))) score += 100
+        if (q.length >= 4 && (s.contains(q) || q.contains(s))) score += 100
         // LCS 加分
-        val lcs = lcsLen(query, stem)
+        val lcs = lcsLen(q, s)
         if (lcs >= 3) score += lcs
         return score
     }
