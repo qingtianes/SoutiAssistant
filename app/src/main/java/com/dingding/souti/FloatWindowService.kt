@@ -1899,7 +1899,12 @@ class FloatWindowService : Service() {
             // 每段独立匹配，按屏幕顺序收集
             val allResults = mutableListOf<List<SearchResult>>()
             questions.forEach { seg ->
-                val r = bank.search(seg, limit = 3)
+                // ★★ 修复：提取"括号前的题干"作为查询词（跟浮窗 processOcrText 一致）
+                //    之前用整个 seg（含选项+答案）search，长文本 LCS 匹配到相关度最高但错误的题
+                //    → 看起来像"按相关度排序"、顺序乱、内容对不上屏幕
+                val parenIdx = maxOf(seg.lastIndexOf('('), seg.lastIndexOf('（'))
+                val stem = if (parenIdx > 3) seg.substring(0, parenIdx).trim() else seg.trim()
+                val r = if (stem.isNotBlank()) bank.search(stem, limit = 3) else emptyList()
                 allResults.add(r)
             }
             renderScreenReadMulti(container, questions, allResults)
