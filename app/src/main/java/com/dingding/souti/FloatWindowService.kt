@@ -1886,10 +1886,12 @@ class FloatWindowService : Service() {
             renderScreenReadResults(container, results, isMulti = false)
         } else {
             // ── 多题模式：按结构切分 ──
-            // ★★ 修复：传原始 text（保留换行），splitScreenReadQuestions 按"行首题号"切分
-            //    之前传 cleaned（压成一行），题号正则误匹配题目内容里的数字 → 乱序 + 漏题
             val questions = splitScreenReadQuestions(text)
+            // ★ 诊断日志：输出切分出的每道题前 20 字，看顺序是否 = 屏幕自上而下
             Log.d("FloatWindow", "读屏多题切分: ${questions.size} 段")
+            questions.forEachIndexed { i, q ->
+                Log.d("FloatWindow", "  切分[$i]: ${q.take(20)}")
+            }
             if (questions.size <= 1) {
                 // 切分失败（无题号结构）→ 仍按单题处理
                 val results = bank.search(cleaned, limit = 5)
@@ -1899,12 +1901,12 @@ class FloatWindowService : Service() {
             // 每段独立匹配，按屏幕顺序收集
             val allResults = mutableListOf<List<SearchResult>>()
             questions.forEach { seg ->
-                // ★★ 修复：提取"括号前的题干"作为查询词（跟浮窗 processOcrText 一致）
-                //    之前用整个 seg（含选项+答案）search，长文本 LCS 匹配到相关度最高但错误的题
-                //    → 看起来像"按相关度排序"、顺序乱、内容对不上屏幕
                 val parenIdx = maxOf(seg.lastIndexOf('('), seg.lastIndexOf('（'))
                 val stem = if (parenIdx > 3) seg.substring(0, parenIdx).trim() else seg.trim()
                 val r = if (stem.isNotBlank()) bank.search(stem, limit = 3) else emptyList()
+                // ★ 诊断日志：每题匹配的 best stem + score
+                val bestScore = r.firstOrNull()?.score ?: 0
+                Log.d("FloatWindow", "  匹配 stem='${stem.take(20)}' best=${r.firstOrNull()?.question?.stem?.take(20) ?: "无"} score=$bestScore")
                 allResults.add(r)
             }
             renderScreenReadMulti(container, questions, allResults)
