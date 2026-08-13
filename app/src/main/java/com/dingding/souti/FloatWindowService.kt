@@ -1408,8 +1408,9 @@ class FloatWindowService : Service() {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
-            // ★ 默认位置改到屏幕右下角贴底（避开文档主体在屏幕中左的情况，涂白不覆盖文档）
-            gravity = Gravity.BOTTOM or Gravity.END
+            // ★ 统一用 TOP|END（右上角锚定）：p.x=距右边缘距离，p.y=距顶边缘距离
+            //    之前 BOTTOM|END 导致拖动 p.y 方向反了 + 恢复函数用 TOP|END 不一致
+            gravity = Gravity.TOP or Gravity.END
             x = dp(8)
             y = dp(80)
         }
@@ -1481,13 +1482,11 @@ class FloatWindowService : Service() {
                         val newH = (initH + dy).coerceIn(dp(240), dp(700))
                         p.width = newW
                         p.height = newH
-                        // ★ ◢ 跟手指版本（用户期望）+ 窗口左边不动（不"跑走"）：
-                        //    ◢ 屏幕位置 = initTX + dx（跟手指）
-                        //    窗口左边 = initLeft 不动 → p.x = initX - dx
-                        //    验证：窗口右边 = screenW - p.x = screenW - (initX - dx) = initTX + dx ✓ ◢ 跟手指
-                        //          窗口左边 = screenW - p.x - p.width = initLeft ✓ 不动
-                        p.x = initX - dx
-                        p.y = initY + dy
+                        // ★★★ 正确 resize（TOP|END 右上角锚定）★★★
+                        //    窗口右上角（p.x, p.y）固定不动，只改 width/height
+                        //    拖 ◢ 向右下 dx>0,dy>0 → 窗口右下扩（◢ 跟手指）
+                        //    拖 ◢ 向左上 dx<0,dy<0 → 窗口右下缩
+                        //    p.x 和 p.y 不变！
                         try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
                     }
                 }
