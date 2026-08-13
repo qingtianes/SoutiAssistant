@@ -1979,8 +1979,17 @@ class FloatWindowService : Service() {
             screenReadModeText?.setTextColor(Color.parseColor("#9FE1CB"))  // 浅绿
             val allResults = mutableListOf<List<SearchResult>>()
             questions.forEach { seg ->
-                val parenIdx = maxOf(seg.lastIndexOf('('), seg.lastIndexOf('（'))
-                val stem = if (parenIdx > 3) seg.substring(0, parenIdx).trim() else seg.trim()
+                // ★★ 修复：取"第一个"括号（不是 lastIndexOf 最后一个），题干在第一个括号前
+                //    之前 lastIndexOf 取最后括号，多题段里选项含括号时取错 → 卡片张冠李戴
+                val a = seg.indexOf('(')
+                val b = seg.indexOf('（')
+                val parenIdx = when {
+                    a < 0 && b < 0 -> -1
+                    a < 0 -> b
+                    b < 0 -> a
+                    else -> minOf(a, b)
+                }
+                val stem = if (parenIdx > 0) seg.substring(0, parenIdx).trim() else seg.trim()
                 val r = if (stem.isNotBlank()) bank.search(stem, limit = 3) else emptyList()
                 val bestScore = r.firstOrNull()?.score ?: 0
                 Log.d("FloatWindow", "  匹配 stem='${stem.take(20)}' best=${r.firstOrNull()?.question?.stem?.take(20) ?: "无"} score=$bestScore")
@@ -2005,26 +2014,17 @@ class FloatWindowService : Service() {
      * 3. 若题号太少（<2）→ 退化单题（整段）
      */
     private fun splitScreenReadQuestions(text: String): List<String> {
-        // ★★ 修复：按"行首数字+标点+非数字"切分（题号后必须跟非数字，排除"0.5%-10.5%"小数被误判为题号）
-        //    之前正则 ^\d{1,3}[标点] 会把选项里的"0.5%"的"0."当成题号 → 切分[1]="0.5%-10.5% B 1.0%-9."
-        val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
-        // 题号锚点：数字 + 标点 + 后跟非数字（(?!\d) 负向断言）
-        val numRe = Regex("^\\d{1,3}[.、．、)）:：](?!\\d)")
+        // ★★ 关键修复：用"答案：X"切分（答案锚点 OCR 稳定识别），不再依赖题号
+        //    题号"1. 2. 3."是 13sp 小字，OCR 常漏识别（日志证实题号全丢失）→ 切分不出多题
+        //    "答案:D"格式文字更大更清晰，OCR 稳定识别 → 用它做切分锚点
+        val parts = text.split(Regex("答案\\s*[:：]"))
         val questions = mutableListOf<String>()
-        val current = StringBuilder()
-        for (line in lines) {
-            if (numRe.containsMatchIn(line)) {
-                // 行首是题号 → 新题开始
-                if (current.isNotBlank()) questions.add(current.toString().trim())
-                current.setLength(0)
-                current.append(line)
-            } else {
-                // 续行（选项/答案）→ 拼到当前题
-                if (current.isNotEmpty()) current.append(' ')
-                current.append(line)
-            }
+        for (part in parts) {
+            val cleaned = part.trim()
+                .replace(Regex("^[A-Ea-e]\\s*"), "")  // 去掉段首残留的答案字母（上一题的答案）
+                .trim()
+            if (cleaned.length >= 4) questions.add(cleaned)
         }
-        if (current.isNotBlank()) questions.add(current.toString().trim())
         // 切分成功（>=2 题）才返回多题，否则退化单题（整段）
         return if (questions.size >= 2) questions else listOf(text)
     }
