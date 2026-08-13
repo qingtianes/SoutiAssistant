@@ -1966,11 +1966,24 @@ class FloatWindowService : Service() {
                 setTypeface(typeface, Typeface.BOLD)
             })
             card.addView(TextView(this).apply {
-                text = best.question.stem.take(40) + if (best.question.stem.length > 40) "..." else ""
+                // ★ 完整题干（不再 take(40) 截断，之前导致选项A混进题干、显示不全）
+                text = best.question.stem
                 textSize = 10f
                 setTextColor(Color.parseColor("#222222"))  // 白底上用深灰更清晰
-                maxLines = 2
+                if (best.question.options.isNotEmpty() || best.question.answer.isNotEmpty()) {
+                    maxLines = 3
+                    ellipsize = TextUtils.TruncateAt.END
+                }
             })
+            // ★★ 修复：显示所有选项（之前漏了！导致只看到题干里混入的选项A）
+            best.question.options.forEach { opt ->
+                card.addView(TextView(this).apply {
+                    text = opt
+                    textSize = 10f
+                    setTextColor(Color.parseColor("#555555"))
+                    setPadding(dp(2), dp(0), dp(2), dp(0))
+                })
+            }
             if (best.question.answer.isNotBlank()) {
                 card.addView(TextView(this).apply {
                     text = "✔ ${best.question.answer}"
@@ -1980,7 +1993,7 @@ class FloatWindowService : Service() {
                 })
             }
             card.addView(TextView(this).apply {
-                text = "相关度 ${best.score}"
+                text = "来源：${best.bankName} · 相关度 ${best.score}"
                 textSize = 9f
                 setTextColor(Color.parseColor("#666666"))  // 白底上用中灰
             })
