@@ -1979,9 +1979,13 @@ class FloatWindowService : Service() {
             screenReadModeText?.setTextColor(Color.parseColor("#9FE1CB"))  // 浅绿
             val allResults = mutableListOf<List<SearchResult>>()
             questions.forEach { seg ->
-                // ★★ 修复：去掉括号及其内容得到完整题干（不是截断括号前）
-                //    "下列（ ）是线型橡胶" → "下列是线型橡胶"（之前截断成"下列"太短匹配不到）
-                val stem = seg.replace(Regex("[（(][^（）()]*[）)]"), "")
+                // ★★ 修复：先截取"第一个选项字母(A-E+标点)"之前的内容，再去括号 → 得到纯题干
+                //    "下列哪根管线上没有配备（ ） A.活化剂..." → 截"A."前 → 去括号 → "下列哪根管线上没有配备"
+                //    之前"去括号"会保留选项文字（"A.活化剂"混进 stem）
+                val optMatch = Regex("[A-E][.、．、)）]").find(seg)
+                val stemPart = if (optMatch != null) seg.substring(0, optMatch.range.first) else seg
+                val stem = stemPart
+                    .replace(Regex("[（(][^（）()]*[）)]"), "")
                     .replace(Regex("\\s+"), "")
                     .trim()
                 val r = if (stem.isNotBlank()) bank.search(stem, limit = 3) else emptyList()
