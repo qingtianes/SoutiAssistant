@@ -1201,10 +1201,11 @@ class FloatWindowService : Service() {
                     .addOnSuccessListener { result ->
                         Log.d("FloatWindow", "读屏: addOnSuccessListener 触发 text.length=${result.text.length}")
                         screenReadOcrInProgress = false
-                        // ★★★ 按 TextBlock 的 y 坐标（boundingBox.top）排序，保证题目自上而下顺序 ★★★
-                        //    之前用 result.text（ML Kit 内部拼接），TextBlock 排列顺序不保证严格自上而下
-                        //    多题场景下顺序会乱。这里按 boundingBox.top 升序排序后再拼接。
+                        // ★★★ 按 TextLine 的 y 坐标（boundingBox.top）排序，保证题目自上而下顺序 ★★★
+                        //    之前用 result.text（ML Kit 内部拼接），顺序不保证自上而下
+                        //    这里 flatMap 展开所有 TextLine（单行），按 top 升序排序后拼接
                         val orderedText = result.textBlocks
+                            .flatMap { block -> block.lines }
                             .sortedBy { it.boundingBox?.top ?: Int.MAX_VALUE }
                             .joinToString("\n") { it.text }
                         // ★ P3-1 修复：空文本也走 processScreenReadText（让状态栏显示"未识别到文字"）
@@ -1885,7 +1886,9 @@ class FloatWindowService : Service() {
             renderScreenReadResults(container, results, isMulti = false)
         } else {
             // ── 多题模式：按结构切分 ──
-            val questions = splitScreenReadQuestions(cleaned)
+            // ★★ 修复：传原始 text（保留换行），splitScreenReadQuestions 按"行首题号"切分
+            //    之前传 cleaned（压成一行），题号正则误匹配题目内容里的数字 → 乱序 + 漏题
+            val questions = splitScreenReadQuestions(text)
             Log.d("FloatWindow", "读屏多题切分: ${questions.size} 段")
             if (questions.size <= 1) {
                 // 切分失败（无题号结构）→ 仍按单题处理
@@ -1911,19 +1914,27 @@ class FloatWindowService : Service() {
      * 3. 若题号太少（<2）→ 退化单题（整段）
      */
     private fun splitScreenReadQuestions(text: String): List<String> {
-        // 匹配 "1. " "2、" "3．" 等题号模式（OCR 常见变体）
-        val numRe = Regex("(?<![\\d])(\\d{1,3})[.、．]\\s*")
-        val matches = numRe.findAll(text)
-        val starts = matches.map { it.range.first }.toList()
-        if (starts.size < 2) return listOf(text)
-        val segments = mutableListOf<String>()
-        for (i in starts.indices) {
-            val s = starts[i]
-            val e = if (i + 1 < starts.size) starts[i + 1] else text.length
-            val seg = text.substring(s, e).trim()
-            if (seg.length >= 8) segments.add(seg)
+        // ★★ 修复：按"行首数字."切分（题号必须在行首），避免题目内容里的"1.0MPa"等数字被误判为题号
+        //    之前正则匹配任意位置的"数字."，导致乱序；且 seg.length>=8 丢弃短段导致漏题
+        val lines = text.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+        val numRe = Regex("^\\d{1,3}[.、．、]")
+        val questions = mutableListOf<String>()
+        val current = StringBuilder()
+        for (line in lines) {
+            if (numRe.containsMatchIn(line)) {
+                // 行首是题号 → 新题开始
+                if (current.isNotBlank()) questions.add(current.toString().trim())
+                current.setLength(0)
+                current.append(line)
+            } else {
+                // 续行（选项/答案）→ 拼到当前题
+                if (current.isNotEmpty()) current.append(' ')
+                current.append(line)
+            }
         }
-        return segments
+        if (current.isNotBlank()) questions.add(current.toString().trim())
+        // 切分成功（>=2 题）才返回多题，否则退化单题（整段）
+        return if (questions.size >= 2) questions else listOf(text)
     }
 
     /** 渲染多题列表（每题一张卡，按屏幕顺序） */
