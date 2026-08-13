@@ -1979,18 +1979,20 @@ class FloatWindowService : Service() {
             screenReadModeText?.setTextColor(Color.parseColor("#9FE1CB"))  // 浅绿
             val allResults = mutableListOf<List<SearchResult>>()
             questions.forEach { seg ->
-                // ★★ 修复：先截取"第一个选项字母(A-E+标点)"之前的内容，再去括号 → 得到纯题干
-                //    "下列哪根管线上没有配备（ ） A.活化剂..." → 截"A."前 → 去括号 → "下列哪根管线上没有配备"
-                //    之前"去括号"会保留选项文字（"A.活化剂"混进 stem）
+                // ★★ 修复：截取选项前 + 去括号 + 去"依据/根据《...》"前缀 → 纯区分题干
+                //    "依据《...受限空间...》涂刷具有挥发性..." → "涂刷具有挥发性..."
+                //    同前缀题（受限空间3题）去掉共同前缀后，后半才是区分特征，LCS 才能正确区分
                 val optMatch = Regex("[A-E][.、．、)）]").find(seg)
                 val stemPart = if (optMatch != null) seg.substring(0, optMatch.range.first) else seg
                 val stem = stemPart
-                    .replace(Regex("[（(][^（）()]*[）)]"), "")
+                    .replace(Regex("[（(][^（）()]*[）)]"), "")          // 去括号及内容
+                    .replace(Regex("[依据根据]《[^》]+》"), "")            // 去"依据/根据《...》"前缀
+                    .replace(Regex("^[,，。.、\\s]+"), "")                // 去开头标点
                     .replace(Regex("\\s+"), "")
                     .trim()
                 val r = if (stem.isNotBlank()) bank.search(stem, limit = 3) else emptyList()
                 val bestScore = r.firstOrNull()?.score ?: 0
-                Log.d("FloatWindow", "  匹配 stem='${stem.take(20)}' best=${r.firstOrNull()?.question?.stem?.take(20) ?: "无"} score=$bestScore")
+                Log.d("FloatWindow", "  匹配 stem='${stem.take(30)}' best=${r.firstOrNull()?.question?.stem?.take(30) ?: "无"} score=$bestScore")
                 allResults.add(r)
             }
             renderScreenReadMulti(container, questions, allResults)
