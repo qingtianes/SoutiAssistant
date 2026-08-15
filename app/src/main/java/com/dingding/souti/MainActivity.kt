@@ -6,6 +6,7 @@ import android.graphics.Rect
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -40,31 +41,51 @@ val Red = Color(0xFFE24B4A)
 
 class MainActivity : ComponentActivity() {
 
+    private companion object {
+        const val STATE_AUTH_REQUEST_ID = "state_auth_request_id"
+    }
+
     val ocrHelper by lazy { OcrHelper(this) }
+    private var pendingAuthRequestId: Long = 0
 
     // 截屏授权回调：授权结果直接传给 FloatWindowService（Service 创建 MediaProjection，Activity 不持有）
     private val projectionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
+        val requestId = pendingAuthRequestId
+        if (!OcrBridge.isAuthRequestActive(requestId)) {
+            pendingAuthRequestId = 0
+            finish()
+            return@registerForActivityResult
+        }
         if (result.resultCode == RESULT_OK && result.data != null) {
-            // ★ 把 resultCode + data 传给 Service，由 Service getMediaProjection（Android 14 必须前台服务创建）
+            // 把本次授权会话一并交给 Service；关闭后的迟到结果会被拒绝。
             val svcIntent = Intent(this, FloatWindowService::class.java).apply {
                 action = FloatWindowService.ACTION_AUTH_RESULT
+                putExtra(FloatWindowService.EXTRA_AUTH_REQUEST_ID, requestId)
                 putExtra("result_code", result.resultCode)
                 putExtra("result_data", result.data!!)
             }
             startService(svcIntent)
-            finish()  // 透明 Activity 立即关闭
+            pendingAuthRequestId = 0
+            finish()
         } else {
-            finish()  // 用户取消授权
+            OcrBridge.cancelAuthRequest(requestId)
+            pendingAuthRequestId = 0
+            finish()
         }
     }
 
     /** 给 FloatWindowService 调用：发起 OCR 授权请求 */
     fun startOcrRequest(rect: Rect, continuous: Boolean = false, screenRead: Boolean = false) {
+        if (pendingAuthRequestId > 0 && OcrBridge.isAuthRequestActive(pendingAuthRequestId)) {
+            Log.w("MainActivity", "已有录屏授权请求进行中，忽略重复请求")
+            return
+        }
         OcrBridge.pendingRect = rect
         OcrBridge.continuous = continuous
         OcrBridge.screenRead = screenRead
+        pendingAuthRequestId = OcrBridge.beginAuthRequest()
         ocrHelper.startOcr(rect, projectionLauncher)
     }
 
@@ -75,6 +96,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingAuthRequestId = savedInstanceState?.getLong(STATE_AUTH_REQUEST_ID, 0) ?: 0
+        if (pendingAuthRequestId > 0 && !OcrBridge.isAuthRequestActive(pendingAuthRequestId)) {
+            // 进程重建后内存中的授权会话已经丢失；不要自动叠加第二个系统授权窗口。
+            pendingAuthRequestId = 0
+            finish()
+            return
+        }
         val isOcrRequest = intent?.getBooleanExtra("ocr_request", false) == true
         if (isOcrRequest) {
             // ★ OCR 模式：透明背景，不显示主页内容（避免遮挡题库页面让 OCR 截到主页）
@@ -113,6 +141,11 @@ class MainActivity : ComponentActivity() {
             val screenRead = intent.getBooleanExtra("ocr_screen_read", false)
             startOcrRequest(rect, continuous, screenRead)
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        outState.putLong(STATE_AUTH_REQUEST_ID, pendingAuthRequestId)
+        super.onSaveInstanceState(outState)
     }
 
     override fun onDestroy() {
@@ -215,8 +248,8 @@ Button(
                                 val stopIntent = Intent(context, FloatWindowService::class.java).apply {
                                     action = FloatWindowService.ACTION_STOP_SELF
                                 }
+                                OcrBridge.cancelAuthRequest()
                                 context.startService(stopIntent)
-                                OcrBridge.mediaProjection = null
                                 floatRunning = false
                             }
                             else -> {

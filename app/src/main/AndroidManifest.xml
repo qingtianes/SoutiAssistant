@@ -3,17 +3,13 @@
 
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    <uses-permission android:name="android.permission.CAPTURE_VIDEO_OUTPUT" />
-    <uses-permission android:name="android.permission.MEDIA_PROJECTION" />
-    <uses-permission android:name="android.permission.PROJECT_MEDIA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <!-- ★ Android 15 targetSDK 35 对 mediaProjection type 的额外要求 -->
-    <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
     <application
         android:allowBackup="true"
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:fullBackupContent="@xml/backup_rules"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
@@ -34,12 +30,9 @@
         <service
             android:name=".FloatWindowService"
             android:exported="false"
-            android:foregroundServiceType="mediaProjection|specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Search overlay for answering questions" />
-        </service>
-        <!-- ★ 分享题库：FileProvider 将内部 cacheDir 暴露给接收方 -->
+            android:foregroundServiceType="mediaProjection" />
+
+        <!-- 分享题库：FileProvider 将内部 cacheDir 暂时授权给接收方 -->
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

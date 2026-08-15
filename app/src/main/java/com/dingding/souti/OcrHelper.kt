@@ -132,7 +132,7 @@ class OcrHelper(private val activity: ComponentActivity) {
         recognizer.process(image)
             .addOnSuccessListener { result ->
                 val text = result.text.replace("\n", " ").trim()
-                Log.d(TAG, "OCR 结果: ${text.take(50)}")
+                Log.d(TAG, "OCR 完成: ${text.length} 字符")
                 writeResult(text)
             }
             .addOnFailureListener { e ->

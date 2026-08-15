@@ -1,6 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <data-extraction-rules>
+    <!-- Android 12 及以上：云备份不包含题库和 OCR 原文。 -->
     <cloud-backup>
-        <include domain="sharedpref" path="jizhangben.xml" />
+        <exclude domain="sharedpref" path="souti_bank.xml" />
+        <exclude domain="sharedpref" path="ocr_prefs.xml" />
     </cloud-backup>
+
+    <!-- 设备换机迁移同样排除敏感题目数据，避免通过 D2D 恢复。 -->
+    <device-transfer>
+        <exclude domain="sharedpref" path="souti_bank.xml" />
+        <exclude domain="sharedpref" path="ocr_prefs.xml" />
+    </device-transfer>
 </data-extraction-rules>
