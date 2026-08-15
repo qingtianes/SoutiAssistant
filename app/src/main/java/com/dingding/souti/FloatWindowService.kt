@@ -1362,7 +1362,7 @@ class FloatWindowService : Service() {
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.parseColor("#FFFFFF"))
         })
-        // ★ 模式指示（单题 = 整段匹配，多题 = 按题号切分），processScreenReadText 里更新
+        // ★ 模式指示（单题 = 整段匹配，多题 = 按“答案：”切分），processScreenReadText 里更新
         val modeText = TextView(this).apply {
             text = ""
             textSize = 10f
@@ -1389,7 +1389,7 @@ class FloatWindowService : Service() {
             }
         }
         titleBar.addView(pauseBtn)
-        // 最小化（缩成小圆点，类似老板键）
+        // 最小化（缩成小圆点，便于暂时收起界面）
         val minBtn = TextView(this).apply {
             text = "—"
             textSize = 14f
@@ -1924,47 +1924,23 @@ class FloatWindowService : Service() {
      * OCR 出来的可能是整屏多道题，先按"答案"切分，每段提取题干关键词搜题
      */
     private fun processOcrText(text: String) {
-        if (text.isBlank()) return
-        val cleaned = text.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
-        Log.d("FloatWindow", "processOcrText: cleaned.len=${cleaned.length}")
-        // 按"答案"切分：每段 = 题干+选项+答案
-        val segments = cleaned.split(Regex("答案\\s*[:：]"))
-        // ★ 用括号前的题干做查询词（不含选项字符，关键词短，匹配更精准）
-        val queries = mutableListOf<String>()
-        segments.forEach { seg ->
-            val segTrim = seg.trim()
-            if (segTrim.length < 4) return@forEach
-            // 找括号：取"("或"（"之前的所有文字作为题干
-            val parenIdx = maxOf(segTrim.lastIndexOf('('), segTrim.lastIndexOf('（'))
-            val stem = if (parenIdx > 3) segTrim.substring(0, parenIdx).trim() else segTrim.take(20)
-            if (stem.isNotBlank()) queries.add(stem)
-        }
-        Log.d("FloatWindow", "提取 ${queries.size} 个查询词")
-        // 每段搜题，合并结果
-        val merged = LinkedHashMap<Long, Pair<SearchResult, Int>>()
-        queries.forEach { q ->
-            if (q.length < 3) return@forEach
-            val results = bank.search(q, limit = 5)
-            results.forEach { r ->
-                val old = merged[r.question.id]
-                if (old == null || r.score > old.second) {
-                    merged[r.question.id] = r to r.score
-                }
-            }
-        }
-        ocrRawText = cleaned
-        // ★ 按相关度排序 + 限制最多 3 条候选（用户要求"如不确定就继续输出次结果"）
-        val sorted = merged.values.sortedByDescending { it.second }.take(5).map { it.first }
-        Log.d("FloatWindow", "搜题结果: ${merged.size} 条唯一匹配，显示前 ${sorted.size}")
-        renderScanResults(sorted)
+        val processed = OcrQuestionProcessor.processScanText(text, bank::search) ?: return
+        Log.d("FloatWindow", "processOcrText: cleaned.len=${processed.normalizedText.length}")
+        Log.d("FloatWindow", "提取 ${processed.queries.size} 个查询词")
+        ocrRawText = processed.normalizedText
+        Log.d(
+            "FloatWindow",
+            "搜题结果: ${processed.uniqueMatchCount} 条唯一匹配，显示前 ${processed.matches.size}"
+        )
+        renderScanResults(processed.matches)
     }
 
     // ═══════════════ 读屏模式：多题切分 + 匹配渲染 ═══════════════
 
     /**
      * 读屏模式 OCR 文本处理（B 方案：全列表输出）：
-     * - 文本 ≤ 300 字 → 单题：直接 LCS 匹配，输出单张卡片
-     * - 文本 > 300 字 → 多题：按题号+选项结构切分 N 题，每题独立匹配，按屏幕顺序输出列表
+     * - 能按“答案：”分出至少两段 → 多题：每题独立匹配，按屏幕顺序输出列表
+     * - 无法稳定切分 → 单题：整段匹配，输出单张卡片
      * - 无匹配时小窗内显示提示
      */
     private fun processScreenReadText(text: String) {
@@ -1982,7 +1958,7 @@ class FloatWindowService : Service() {
         }
         // ★ OCR 原文预览（2 行截短）
         screenReadOcrPreview?.let { pv ->
-            pv.text = text.take(150).replace("\n", " ").replace(Regex("\\s+"), " ").trim()
+            pv.text = OcrQuestionProcessor.normalizeText(text.take(150))
         }
         if (text.isBlank()) {
             // OCR 成功但没文字（屏幕纯色/低对比）→ 提示用户，便于区分"OCR 在跑 vs 没跑"
@@ -1996,7 +1972,7 @@ class FloatWindowService : Service() {
             })
             return
         }
-        val cleaned = text.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
+        val cleaned = OcrQuestionProcessor.normalizeText(text)
         Log.d("FloatWindow", "读屏 OCR 完成(${cleaned.length}字)")
         container.removeAllViews()
         // ★★ 修复：不依赖字数阈值判断单题/多题，而是直接看"能否切分出多道题" ★★
@@ -2013,14 +1989,7 @@ class FloatWindowService : Service() {
                 // ★★ 修复：截取选项前 + 去括号 + 去"开头到《...》"前缀 → 纯区分题干
                 //    通用方案：去掉"开头到第一个《...》结束"，不依赖具体前缀词（依据/根据/在/我司 等都适用）
                 //    "依据《...受限空间...》涂刷具有挥发性..." → "涂刷具有挥发性..."
-                val optMatch = Regex("[A-E][.、．、)）]").find(seg)
-                val stemPart = if (optMatch != null) seg.substring(0, optMatch.range.first) else seg
-                val stem = stemPart
-                    .replace(Regex("[（(][^（）()]*[）)]"), "")          // 去括号及内容
-                    .replace(Regex("^[^《]*《[^》]*》"), "")              // 去"开头到《...》"（通用，不硬编码前缀词）
-                    .replace(Regex("^[,，。.、\\s]+"), "")                // 去开头标点
-                    .replace(Regex("\\s+"), "")
-                    .trim()
+                val stem = OcrQuestionProcessor.extractScreenReadStem(seg)
                 val r = if (stem.isNotBlank()) bank.search(stem, limit = 3) else emptyList()
                 val bestScore = r.firstOrNull()?.score ?: 0
                 Log.d("FloatWindow", "多题匹配完成: candidates=${r.size}, score=$bestScore")
@@ -2038,27 +2007,11 @@ class FloatWindowService : Service() {
     }
 
     /**
-     * 多题切分：按 "数字. " 题号 + 选项结构把长文本切成 N 个候选题目
-     * 规则：
-     * 1. 找所有 "数字." / "数字、" 开头位置（题号锚点）
-     * 2. 题号之间 = 一道题
-     * 3. 若题号太少（<2）→ 退化单题（整段）
+     * 多题切分：以 OCR 较稳定的“答案：X”为锚点。
+     * 只有得到至少两段有效题目时才进入多题模式，否则退化为单题整段。
      */
-    private fun splitScreenReadQuestions(text: String): List<String> {
-        // ★★ 关键修复：用"答案：X"切分（答案锚点 OCR 稳定识别），不再依赖题号
-        //    题号"1. 2. 3."是 13sp 小字，OCR 常漏识别（日志证实题号全丢失）→ 切分不出多题
-        //    "答案:D"格式文字更大更清晰，OCR 稳定识别 → 用它做切分锚点
-        val parts = text.split(Regex("答案\\s*[:：]"))
-        val questions = mutableListOf<String>()
-        for (part in parts) {
-            val cleaned = part.trim()
-                .replace(Regex("^[A-Ea-e]\\s*"), "")  // 去掉段首残留的答案字母（上一题的答案）
-                .trim()
-            if (cleaned.length >= 4) questions.add(cleaned)
-        }
-        // 切分成功（>=2 题）才返回多题，否则退化单题（整段）
-        return if (questions.size >= 2) questions else listOf(text)
-    }
+    private fun splitScreenReadQuestions(text: String): List<String> =
+        OcrQuestionProcessor.splitScreenReadQuestions(text)
 
     /** 渲染多题列表（每题一张卡，按屏幕顺序） */
     private fun renderScreenReadMulti(
@@ -2074,7 +2027,7 @@ class FloatWindowService : Service() {
         })
         // ★★ 去掉去重：宁可重复显示也不能不显示（用户明确要求）
         //    之前按 question.id 去重，同前缀题（受限空间/能量隔离系列）LCS 前缀占优匹配到同一题 → 误判重复 → 漏题
-        //    读屏搜题没有手动兜底，考试也不允许切换应用，所以每题都必须输出，即使内容重复
+        //    连续识别场景没有手动兜底，因此保持每个分段的输出，即使内容重复
         questions.forEachIndexed { idx, seg ->
             val results = resultsList[idx]
             val title = "第 ${idx + 1} 题"
@@ -2265,7 +2218,7 @@ class FloatWindowService : Service() {
                     ellipsize = TextUtils.TruncateAt.END
                 }
             })
-            // ★ 显示选项（考试 APP 会改选项顺序，必须让用户看到选项对照）
+            // ★ 显示选项（不同来源可能调整选项顺序，保留选项便于核对）
             sr.question.options.forEach { opt ->
                 card.addView(TextView(this).apply {
                     text = opt
