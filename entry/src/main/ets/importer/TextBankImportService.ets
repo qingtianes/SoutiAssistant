@@ -1,4 +1,6 @@
 import { fileIo, picker } from '@kit.CoreFileKit';
+import { BusinessError } from '@kit.BasicServicesKit';
+import { common } from '@kit.AbilityKit';
 
 /**
  * 用户选择的 TXT 题库文件。
@@ -20,15 +22,15 @@ export class SelectedTextBank {
 
 /** 负责让用户选择并读取一个 TXT 题库文件。 */
 export class TextBankImportService {
-  private static readonly MAX_FILE_BYTES: number = 10 * 1024 * 1024;
+  private static readonly MAX_FILE_BYTES: number = 2 * 1024 * 1024;
   private static readonly TXT_SUFFIX_FILTER: Array<string> = ['TXT|.txt'];
 
   /**
    * 打开系统文件选择器并读取一个 TXT 文件。
    * 用户取消选择时返回 undefined；其他错误继续抛给页面处理。
    */
-  static async pickOneTxt(): Promise<SelectedTextBank | undefined> {
-    const documentPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker();
+  static async pickOneTxt(context: common.UIAbilityContext): Promise<SelectedTextBank | undefined> {
+    const documentPicker: picker.DocumentViewPicker = new picker.DocumentViewPicker(context);
     let selectedUris: Array<string>;
 
     try {
@@ -61,7 +63,7 @@ export class TextBankImportService {
     }
 
     if (fileStat.size > TextBankImportService.MAX_FILE_BYTES) {
-      throw new Error('TXT 题库文件不能超过 10 MB。');
+      throw new Error('TXT 题库文件不能超过 2 MB。');
     }
 
     let content: string;
@@ -73,11 +75,6 @@ export class TextBankImportService {
 
     if (content.trim().length === 0) {
       throw new Error('所选 TXT 题库内容为空，请选择包含题目的文件。');
-    }
-
-    // 文件在选择后可能被替换，读取后再做一次字符数保护，避免绕过大小限制。
-    if (content.length > TextBankImportService.MAX_FILE_BYTES) {
-      throw new Error('TXT 题库文件不能超过 10 MB。');
     }
 
     return new SelectedTextBank(
@@ -113,9 +110,6 @@ export class TextBankImportService {
 
   private static isUserCancellation(error: Object): boolean {
     const businessError: BusinessError = error as BusinessError;
-    if (businessError.code === 201) {
-      return true;
-    }
     const message: string = businessError.message ?? '';
     const normalizedMessage: string = message.toLowerCase();
     return normalizedMessage.includes('cancel') || message.includes('取消');

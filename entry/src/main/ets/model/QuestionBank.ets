@@ -8,10 +8,11 @@
  * - 搜索匹配：LCS 最长公共子串 + 完全包含打分（OCR 截短也能命中）
  * - txt 解析：题干 + A./B./C./D. 选项 + 答案:X + 空行分隔
  *
- * 存储：Preferences（和安卓 SharedPreferences 同思路）
+ * 存储：应用私有目录中的 JSON 文件；Preferences 仅用于首次迁移旧数据。
  */
 import preferences from '@ohos.data.preferences';
 import common from '@ohos.app.ability.common';
+import { fileIo } from '@kit.CoreFileKit';
 
 /** 搜索结果（含题库名 + 匹配分数） */
 export class SearchResult {
@@ -66,100 +67,189 @@ export class Question {
   }
 }
 
+/** 持久化快照：题库、题目和启用状态在一次写入中保持一致。 */
+class QuestionBankStore {
+  banks: Bank[];
+  questions: Question[];
+  activeBankIds: string[];
+
+  constructor(banks: Bank[] = [], questions: Question[] = [], activeBankIds: string[] = []) {
+    this.banks = banks;
+    this.questions = questions;
+    this.activeBankIds = activeBankIds;
+  }
+}
+
 /** 题库管理器 */
 export class QuestionBank {
   static readonly STORE_NAME: string = 'souti_bank';
   static readonly KEY_BANKS: string = 'banks';
   static readonly KEY_QUESTIONS: string = 'questions';
   static readonly KEY_ACTIVE: string = 'activeBankIds';
+  private static readonly STORE_FILE_NAME: string = 'souti_bank_store.json';
 
   private async getPref(context: common.Context): Promise<preferences.Preferences> {
     return await preferences.getPreferences(context, QuestionBank.STORE_NAME);
   }
 
-  // ===== 题库操作 =====
-  async loadBanks(context: common.Context): Promise<Bank[]> {
-    const pref = await this.getPref(context);
-    const raw = await pref.get(QuestionBank.KEY_BANKS, '[]');
-    const list: Bank[] = [];
-    try {
-      const arr = JSON.parse(raw as string) as Bank[];
-      arr.forEach((o: Bank) => {
-        list.push(new Bank(o.id, o.name, o.sourceFile, o.createdAt, o.sourceModifiedAt, o.type));
-      });
-    } catch (e) {
-      // 数据损坏返回空列表
-    }
-    return list;
+  private storePath(context: common.Context): string {
+    return `${context.filesDir}/${QuestionBank.STORE_FILE_NAME}`;
   }
 
-  private async saveBanks(context: common.Context, list: Bank[]): Promise<void> {
+  private normalizeStore(value: QuestionBankStore): QuestionBankStore {
+    const banks: Bank[] = [];
+    const questions: Question[] = [];
+    const activeBankIds: string[] = [];
+    if (value.banks !== undefined) {
+      value.banks.forEach((bank: Bank) => {
+        banks.push(new Bank(bank.id, bank.name, bank.sourceFile, bank.createdAt,
+          bank.sourceModifiedAt, bank.type));
+      });
+    }
+    if (value.questions !== undefined) {
+      value.questions.forEach((question: Question) => {
+        questions.push(new Question(question.id, question.bankId, question.stem,
+          question.options, question.answer, question.source));
+      });
+    }
+    if (value.activeBankIds !== undefined) {
+      value.activeBankIds.forEach((id: string) => {
+        if (!activeBankIds.includes(id)) {
+          activeBankIds.push(id);
+        }
+      });
+    }
+    const validIds: string[] = banks.map((bank: Bank) => bank.id.toString());
+    return new QuestionBankStore(banks, questions,
+      activeBankIds.filter((id: string) => validIds.includes(id)));
+  }
+
+  private async readStore(context: common.Context): Promise<QuestionBankStore> {
+    const path = this.storePath(context);
+    const exists: boolean = await fileIo.access(path);
+    if (!exists) {
+      return await this.migrateLegacyStore(context);
+    }
+    const raw: string = await fileIo.readText(path, { encoding: 'utf-8' });
+    if (raw.trim().length === 0) {
+      throw new Error('本地题库数据为空，请先备份后清除并重新导入。');
+    }
+    try {
+      return this.normalizeStore(JSON.parse(raw) as QuestionBankStore);
+    } catch (error) {
+      throw new Error('本地题库数据已损坏，请先备份后清除并重新导入。');
+    }
+  }
+
+  private async migrateLegacyStore(context: common.Context): Promise<QuestionBankStore> {
     const pref = await this.getPref(context);
-    await pref.put(QuestionBank.KEY_BANKS, JSON.stringify(list));
+    let banks: Bank[] = [];
+    let questions: Question[] = [];
+    let activeBankIds: string[] = [];
+    try {
+      const rawBanks = await pref.get(QuestionBank.KEY_BANKS, '[]');
+      banks = JSON.parse(rawBanks as string) as Bank[];
+    } catch (error) {
+      banks = [];
+    }
+    try {
+      const rawQuestions = await pref.get(QuestionBank.KEY_QUESTIONS, '[]');
+      questions = JSON.parse(rawQuestions as string) as Question[];
+    } catch (error) {
+      questions = [];
+    }
+    try {
+      const rawActive = await pref.get(QuestionBank.KEY_ACTIVE, '[]');
+      activeBankIds = JSON.parse(rawActive as string) as string[];
+    } catch (error) {
+      activeBankIds = [];
+    }
+    const store = this.normalizeStore(new QuestionBankStore(banks, questions, activeBankIds));
+    await this.writeStore(context, store);
+    // 成功写入文件后清理旧的大字符串，避免继续占用 Preferences。
+    await pref.clear();
     await pref.flush();
+    return store;
+  }
+
+  private async writeStore(context: common.Context, store: QuestionBankStore): Promise<void> {
+    const normalized = this.normalizeStore(store);
+    const targetPath = this.storePath(context);
+    const temporaryPath = `${targetPath}.tmp`;
+    const stream: fileIo.Stream = await fileIo.createStream(temporaryPath, 'w');
+    try {
+      await stream.write(JSON.stringify(normalized));
+    } finally {
+      stream.close();
+    }
+    // mode=0 表示覆盖目标文件；临时文件写完后再替换，降低中途退出造成损坏的概率。
+    await fileIo.moveFile(temporaryPath, targetPath, 0);
+  }
+
+  // ===== 题库操作 =====
+  async loadBanks(context: common.Context): Promise<Bank[]> {
+    return (await this.readStore(context)).banks;
   }
 
   async deleteBank(context: common.Context, id: number): Promise<void> {
-    const banks = await this.loadBanks(context);
-    await this.saveBanks(context, banks.filter((b: Bank) => b.id !== id));
-    const allQ = await this.loadAllQuestions(context);
-    await this.saveQuestions(context, allQ.filter((q: Question) => q.bankId !== id));
+    const store = await this.readStore(context);
+    const key = id.toString();
+    await this.writeStore(context, new QuestionBankStore(
+      store.banks.filter((bank: Bank) => bank.id !== id),
+      store.questions.filter((question: Question) => question.bankId !== id),
+      store.activeBankIds.filter((activeId: string) => activeId !== key)
+    ));
   }
 
   // ===== 题目操作 =====
   async loadAllQuestions(context: common.Context): Promise<Question[]> {
-    const pref = await this.getPref(context);
-    const raw = await pref.get(QuestionBank.KEY_QUESTIONS, '[]');
-    const list: Question[] = [];
-    try {
-      const arr = JSON.parse(raw as string) as Question[];
-      arr.forEach((o: Question) => {
-        list.push(new Question(o.id, o.bankId, o.stem, o.options, o.answer, o.source));
-      });
-    } catch (e) {
-      // 数据损坏返回空列表
-    }
-    return list;
+    return (await this.readStore(context)).questions;
   }
 
   async loadQuestions(context: common.Context, bankId: number): Promise<Question[]> {
-    const all = await this.loadAllQuestions(context);
-    return all.filter((q: Question) => q.bankId === bankId);
+    return (await this.readStore(context)).questions.filter((question: Question) => question.bankId === bankId);
   }
 
   async questionCount(context: common.Context, bankId: number): Promise<number> {
-    const list = await this.loadQuestions(context, bankId);
-    return list.length;
+    return (await this.loadQuestions(context, bankId)).length;
   }
 
   async deleteQuestion(context: common.Context, id: number): Promise<void> {
-    const all = await this.loadAllQuestions(context);
-    await this.saveQuestions(context, all.filter((q: Question) => q.id !== id));
-  }
-
-  private async saveQuestions(context: common.Context, list: Question[]): Promise<void> {
-    const pref = await this.getPref(context);
-    await pref.put(QuestionBank.KEY_QUESTIONS, JSON.stringify(list));
-    await pref.flush();
+    const store = await this.readStore(context);
+    store.questions = store.questions.filter((question: Question) => question.id !== id);
+    await this.writeStore(context, store);
   }
 
   // ===== 导入（创建题库 + 添加题目）=====
   async importBank(context: common.Context, name: string, sourceFile: string,
     sourceModifiedAt: number, type: string, questions: Question[]): Promise<Bank> {
-    const bankId = Date.now();
+    const store = await this.readStore(context);
+    let bankId = Date.now();
+    while (store.banks.some((bank: Bank) => bank.id === bankId)) {
+      bankId++;
+    }
     const bank = new Bank(bankId, name, sourceFile, bankId, sourceModifiedAt, type);
-    // 给题目关联 bankId
-    const withBankId: Question[] = questions.map((q: Question) =>
-      new Question(q.id, bankId, q.stem, q.options, q.answer, q.source)
+    let nextQuestionId = 1;
+    store.questions.forEach((question: Question) => {
+      if (question.id >= nextQuestionId) {
+        nextQuestionId = question.id + 1;
+      }
+    });
+    const withBankId: Question[] = questions.map((question: Question) =>
+      new Question(nextQuestionId++, bankId, question.stem, question.options,
+        question.answer, question.source)
     );
-    const banks = await this.loadBanks(context);
-    await this.saveBanks(context, banks.concat(bank));
-    const allQ = await this.loadAllQuestions(context);
-    await this.saveQuestions(context, allQ.concat(withBankId));
+    store.banks.push(bank);
+    store.questions = store.questions.concat(withBankId);
+    if (!store.activeBankIds.includes(bankId.toString())) {
+      store.activeBankIds.push(bankId.toString());
+    }
+    await this.writeStore(context, store);
     return bank;
   }
 
   async clear(context: common.Context): Promise<void> {
+    await this.writeStore(context, new QuestionBankStore());
     const pref = await this.getPref(context);
     await pref.clear();
     await pref.flush();
@@ -167,31 +257,25 @@ export class QuestionBank {
 
   // ===== 激活题库（被勾选用于搜题的）=====
   async getActiveBankIds(context: common.Context): Promise<string[]> {
-    const pref = await this.getPref(context);
-    const raw = await pref.get(QuestionBank.KEY_ACTIVE, '[]');
-    try {
-      return JSON.parse(raw as string) as string[];
-    } catch (e) {
-      return [];
-    }
+    return (await this.readStore(context)).activeBankIds;
   }
 
   async setActiveBankIds(context: common.Context, ids: string[]): Promise<void> {
-    const pref = await this.getPref(context);
-    await pref.put(QuestionBank.KEY_ACTIVE, JSON.stringify(ids));
-    await pref.flush();
+    const store = await this.readStore(context);
+    store.activeBankIds = ids;
+    await this.writeStore(context, store);
   }
 
   async toggleActive(context: common.Context, bankId: number): Promise<void> {
-    const cur = await this.getActiveBankIds(context);
+    const store = await this.readStore(context);
     const key = bankId.toString();
-    const idx = cur.indexOf(key);
+    const idx = store.activeBankIds.indexOf(key);
     if (idx >= 0) {
-      cur.splice(idx, 1);
-    } else {
-      cur.push(key);
+      store.activeBankIds.splice(idx, 1);
+    } else if (store.banks.some((bank: Bank) => bank.id === bankId)) {
+      store.activeBankIds.push(key);
     }
-    await this.setActiveBankIds(context, cur);
+    await this.writeStore(context, store);
   }
 
   /**

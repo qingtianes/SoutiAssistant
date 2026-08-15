@@ -7,9 +7,10 @@ import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import promptAction from '@ohos.promptAction';
 import { FloatWindowManager } from '../common/FloatWindowManager';
-import { QuestionBank, SearchResult } from '../model/QuestionBank';
+import { Bank, Question, QuestionBank, SearchResult } from '../model/QuestionBank';
 import { ImagePickerService } from '../picker/ImagePickerService';
 import { OcrService } from '../ocr/OcrService';
+import { SelectedTextBank, TextBankImportService } from '../importer/TextBankImportService';
 
 @Entry
 @Component
@@ -22,9 +23,15 @@ struct Index {
   @State isRecognizing: boolean = false;
   @State isSearching: boolean = false;
   @State searchResults: SearchResult[] = [];
+  @State banks: Bank[] = [];
+  @State activeBankIds: string[] = [];
+  @State isImporting: boolean = false;
+  @State isBankOperationBusy: boolean = false;
+  @State pendingDeleteBankId: number = 0;
   @State floatOn: boolean = false;
 
   private readonly questionBank: QuestionBank = new QuestionBank();
+  private operationVersion: number = 0;
 
   aboutToAppear(): void {
     this.floatOn = FloatWindowManager.isShowing();
@@ -34,11 +41,88 @@ struct Index {
   private async refreshBankStatus(): Promise<void> {
     try {
       const context = getContext(this) as common.UIAbilityContext;
-      const banks = await this.questionBank.loadBanks(context);
-      const activeIds = await this.questionBank.getActiveBankIds(context);
-      this.bankStatus = `本地题库 ${banks.length} 个，已启用 ${activeIds.length} 个`;
+      this.banks = await this.questionBank.loadBanks(context);
+      this.activeBankIds = await this.questionBank.getActiveBankIds(context);
+      this.bankStatus = `本地题库 ${this.banks.length} 个，已启用 ${this.activeBankIds.length} 个`;
     } catch (err) {
+      this.banks = [];
+      this.activeBankIds = [];
       this.bankStatus = `题库读取失败：${this.describeError(err)}`;
+    }
+  }
+
+  private isBankActive(bankId: number): boolean {
+    return this.activeBankIds.includes(bankId.toString());
+  }
+
+  private async importTextBank(): Promise<void> {
+    if (this.isBankOperationBusy) {
+      return;
+    }
+    this.isImporting = true;
+    this.isBankOperationBusy = true;
+    this.pendingDeleteBankId = 0;
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      const selected: SelectedTextBank | undefined = await TextBankImportService.pickOneTxt(context);
+      if (selected === undefined) {
+        this.bankStatus = '已取消选择题库文件';
+        return;
+      }
+      const questions: Question[] = QuestionBank.parseTxt(selected.content, selected.name);
+      if (questions.length === 0) {
+        throw new Error('没有解析到题目，请检查 TXT 是否包含题干并用空行分隔');
+      }
+      const bank = await this.questionBank.importBank(context, selected.name, selected.uri,
+        selected.modifiedAt, 'manual', questions);
+      await this.refreshBankStatus();
+      this.bankStatus = `已导入“${selected.name}”，共 ${questions.length} 道题，并已启用`;
+    } catch (err) {
+      this.bankStatus = `题库导入失败：${this.describeError(err)}`;
+    } finally {
+      this.isImporting = false;
+      this.isBankOperationBusy = false;
+    }
+  }
+
+  private async toggleBank(bankId: number): Promise<void> {
+    if (this.isBankOperationBusy) {
+      return;
+    }
+    this.isBankOperationBusy = true;
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      await this.questionBank.toggleActive(context, bankId);
+      this.pendingDeleteBankId = 0;
+      await this.refreshBankStatus();
+    } catch (err) {
+      this.bankStatus = `题库状态更新失败：${this.describeError(err)}`;
+    } finally {
+      this.isBankOperationBusy = false;
+    }
+  }
+
+  private async requestDeleteBank(bank: Bank): Promise<void> {
+    if (this.pendingDeleteBankId !== bank.id) {
+      this.pendingDeleteBankId = bank.id;
+      this.bankStatus = `再次点击“确认删除”才会删除“${bank.name}”`;
+      return;
+    }
+    if (this.isBankOperationBusy) {
+      return;
+    }
+    this.isBankOperationBusy = true;
+    try {
+      const context = getContext(this) as common.UIAbilityContext;
+      await this.questionBank.deleteBank(context, bank.id);
+      this.pendingDeleteBankId = 0;
+      this.searchResults = [];
+      await this.refreshBankStatus();
+      this.bankStatus = `已删除题库“${bank.name}”`;
+    } catch (err) {
+      this.bankStatus = `题库删除失败：${this.describeError(err)}`;
+    } finally {
+      this.isBankOperationBusy = false;
     }
   }
 
@@ -49,6 +133,7 @@ struct Index {
         this.ocrStatus = '未选择图片';
         return;
       }
+      this.operationVersion++;
       this.selectedImageUri = uri;
       this.ocrText = '';
       this.searchResults = [];
@@ -67,25 +152,37 @@ struct Index {
       return;
     }
 
+    const version = ++this.operationVersion;
+    const imageUri = this.selectedImageUri;
     this.isRecognizing = true;
     this.ocrStatus = '正在识别图片文字…';
     this.searchResults = [];
     try {
       const languages = await OcrService.getSupportedLanguages();
+      if (version !== this.operationVersion) {
+        return;
+      }
       this.supportedLanguageText = languages.length > 0 ?
         `设备 OCR 支持 ${languages.length} 种语言` : '设备未返回 OCR 语言列表';
-      const text = await OcrService.recognizeImage(this.selectedImageUri);
+      const text = await OcrService.recognizeImage(imageUri);
+      if (version !== this.operationVersion) {
+        return;
+      }
       this.ocrText = text;
       if (text.length === 0) {
         this.ocrStatus = '识别完成，但图片中没有可用文字';
         return;
       }
       this.ocrStatus = `识别完成，共 ${text.length} 个字符`;
-      await this.searchCurrentText();
+      await this.performSearch(text.trim(), version);
     } catch (err) {
-      this.ocrStatus = `OCR 失败：${this.describeError(err)}`;
+      if (version === this.operationVersion) {
+        this.ocrStatus = `OCR 失败：${this.describeError(err)}`;
+      }
     } finally {
-      this.isRecognizing = false;
+      if (version === this.operationVersion) {
+        this.isRecognizing = false;
+      }
     }
   }
 
@@ -95,35 +192,53 @@ struct Index {
       promptAction.showToast({ message: '请先识别或输入题目文字' });
       return;
     }
+    const version = ++this.operationVersion;
+    await this.performSearch(query, version);
+  }
+
+  private async performSearch(query: string, version: number): Promise<void> {
     if (this.isSearching) {
       return;
     }
-
     this.isSearching = true;
     try {
       const context = getContext(this) as common.UIAbilityContext;
       const activeIds = await this.questionBank.getActiveBankIds(context);
+      if (version !== this.operationVersion) {
+        return;
+      }
       if (activeIds.length === 0) {
         this.searchResults = [];
         this.bankStatus = '尚未启用本地题库，OCR 文字已保留，可先核对和复制';
         return;
       }
-      this.searchResults = await this.questionBank.search(context, query, 5);
-      this.bankStatus = this.searchResults.length > 0 ?
-        `找到 ${this.searchResults.length} 条本地题库匹配` : '本地题库中没有找到匹配题目';
+      const results = await this.questionBank.search(context, query, 5);
+      if (version !== this.operationVersion) {
+        return;
+      }
+      this.searchResults = results;
+      this.bankStatus = results.length > 0 ?
+        `找到 ${results.length} 条本地题库匹配` : '本地题库中没有找到匹配题目';
     } catch (err) {
-      this.searchResults = [];
-      this.bankStatus = `题库搜索失败：${this.describeError(err)}`;
+      if (version === this.operationVersion) {
+        this.searchResults = [];
+        this.bankStatus = `题库搜索失败：${this.describeError(err)}`;
+      }
     } finally {
-      this.isSearching = false;
+      if (version === this.operationVersion) {
+        this.isSearching = false;
+      }
     }
   }
 
   private clearImageAndResult(): void {
+    this.operationVersion++;
     this.selectedImageUri = '';
     this.ocrText = '';
     this.searchResults = [];
     this.supportedLanguageText = '';
+    this.isRecognizing = false;
+    this.isSearching = false;
     this.ocrStatus = '请选择一张包含文字的图片';
     this.refreshBankStatus();
   }
@@ -151,6 +266,51 @@ struct Index {
       return error.message;
     }
     return JSON.stringify(err);
+  }
+
+  @Builder
+  private bankCard(bank: Bank) {
+    Column({ space: 8 }) {
+      Row() {
+        Column({ space: 3 }) {
+          Text(bank.name)
+            .width('100%')
+            .fontSize(14)
+            .fontWeight(FontWeight.Bold)
+            .fontColor('#222222')
+          Text(this.isBankActive(bank.id) ? '已启用，可参与搜索' : '已停用，不参与搜索')
+            .width('100%')
+            .fontSize(11)
+            .fontColor(this.isBankActive(bank.id) ? '#1D9E75' : '#888888')
+        }
+        .layoutWeight(1)
+        .alignItems(HorizontalAlign.Start)
+      }
+      .width('100%')
+
+      Row({ space: 8 }) {
+        Button(this.isBankActive(bank.id) ? '停用' : '启用')
+          .layoutWeight(1)
+          .height(36)
+          .fontSize(12)
+          .enabled(!this.isBankOperationBusy)
+          .backgroundColor(this.isBankActive(bank.id) ? '#777777' : '#1D9E75')
+          .onClick(() => this.toggleBank(bank.id))
+        Button(this.pendingDeleteBankId === bank.id ? '确认删除' : '删除')
+          .layoutWeight(1)
+          .height(36)
+          .fontSize(12)
+          .enabled(!this.isBankOperationBusy)
+          .backgroundColor(this.pendingDeleteBankId === bank.id ? '#C83B3B' : '#A76A6A')
+          .onClick(() => this.requestDeleteBank(bank))
+      }
+      .width('100%')
+    }
+    .width('100%')
+    .padding(12)
+    .borderRadius(10)
+    .backgroundColor(Color.White)
+    .alignItems(HorizontalAlign.Start)
   }
 
   @Builder
@@ -211,6 +371,57 @@ struct Index {
 
       Scroll() {
         Column({ space: 14 }) {
+          Column({ space: 10 }) {
+            Row() {
+              Text('本地题库')
+                .fontSize(18)
+                .fontWeight(FontWeight.Bold)
+                .fontColor('#222222')
+              Blank()
+              Button(this.isImporting ? '导入中…' : '导入 TXT')
+                .height(36)
+                .fontSize(12)
+                .enabled(!this.isBankOperationBusy)
+                .backgroundColor('#1D9E75')
+                .onClick(() => this.importTextBank())
+            }
+            .width('100%')
+
+            Text('选择 UTF-8 编码的 TXT 题库。导入成功后会自动启用，可以随时停用或删除。')
+              .width('100%')
+              .fontSize(12)
+              .fontColor('#666666')
+              .lineHeight(18)
+
+            Text(this.bankStatus)
+              .width('100%')
+              .fontSize(13)
+              .fontColor(this.bankStatus.includes('失败') ? '#C83B3B' : '#555555')
+              .padding(10)
+              .borderRadius(8)
+              .backgroundColor('#EAF6F1')
+
+            if (this.banks.length === 0) {
+              Text('还没有题库。请先点击“导入 TXT”。')
+                .width('100%')
+                .fontSize(12)
+                .fontColor('#888888')
+                .padding(10)
+            } else {
+              Column({ space: 8 }) {
+                ForEach(this.banks, (bank: Bank) => {
+                  this.bankCard(bank)
+                }, (bank: Bank) => bank.id.toString())
+              }
+              .width('100%')
+            }
+          }
+          .width('92%')
+          .padding(16)
+          .borderRadius(12)
+          .backgroundColor('#F1F1F1')
+          .alignItems(HorizontalAlign.Start)
+
           Column({ space: 8 }) {
             Text('图片文字识别')
               .width('100%')
@@ -243,11 +454,12 @@ struct Index {
               .layoutWeight(1)
               .height(44)
               .backgroundColor('#1D9E75')
+              .enabled(!this.isRecognizing && !this.isSearching)
               .onClick(() => this.chooseImage())
             Button(this.isRecognizing ? '识别中…' : '开始识别')
               .layoutWeight(1)
               .height(44)
-              .enabled(!this.isRecognizing && this.selectedImageUri.length > 0)
+              .enabled(!this.isRecognizing && !this.isSearching && this.selectedImageUri.length > 0)
               .backgroundColor('#2F6FED')
               .onClick(() => this.recognizeSelectedImage())
           }
@@ -277,15 +489,19 @@ struct Index {
             .fontSize(14)
             .backgroundColor(Color.White)
             .borderRadius(12)
+            .enabled(!this.isRecognizing)
             .onChange((value: string) => {
+              this.operationVersion++;
+              this.isSearching = false;
               this.ocrText = value;
+              this.searchResults = [];
             })
 
           Row({ space: 10 }) {
             Button(this.isSearching ? '搜索中…' : '搜索本地题库')
               .layoutWeight(1)
               .height(44)
-              .enabled(!this.isSearching && this.ocrText.trim().length > 0)
+              .enabled(!this.isSearching && !this.isRecognizing && this.ocrText.trim().length > 0)
               .backgroundColor('#1D9E75')
               .onClick(() => this.searchCurrentText())
             Button('清除')
@@ -296,19 +512,11 @@ struct Index {
           }
           .width('92%')
 
-          Text(this.bankStatus)
-            .width('92%')
-            .fontSize(13)
-            .fontColor('#555555')
-            .padding(12)
-            .borderRadius(10)
-            .backgroundColor('#EAF6F1')
-
           if (this.searchResults.length > 0) {
             Column({ space: 10 }) {
               ForEach(this.searchResults, (result: SearchResult, index: number) => {
                 this.resultCard(result, index)
-              }, (result: SearchResult) => result.question.id.toString())
+              }, (result: SearchResult) => `${result.question.bankId}:${result.question.id}`)
             }
             .width('92%')
           }
