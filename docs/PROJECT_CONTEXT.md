@@ -46,6 +46,7 @@ related:
 - OverlayDragResizer：读屏小窗拖拽/缩放。
 - ProjectionVirtualDisplayFactory：VirtualDisplay + ImageReader 创建。
 - SearchUiBuilder：搜题界面构建。
+- ScreenReadWindowBuilder：读屏小窗构建。
 
 ## Key Workflows
 - 浮窗搜题：悬浮窗绿框实时 OCR 框内区域，单题答案输出。

@@ -39,7 +39,7 @@ related:
 - [x] 拆出 BankChunker、FileFormatDetector 与各解析器
 - [x] 包结构归位：import / ocr / overlay / ui / model / repository
 - [x] 浮窗/读屏互斥加固
-- [x] FloatWindowService 拆出：FrameImageUtils、OverlayResultRenderer、ServiceNotificationHelper、OverlayDragResizer、ProjectionVirtualDisplayFactory
+- [x] FloatWindowService 拆出：FrameImageUtils、OverlayResultRenderer、ServiceNotificationHelper、OverlayDragResizer、ProjectionVirtualDisplayFactory、SearchUiBuilder、ScreenReadWindowBuilder
 - [x] MainActivity 拆出：HomeScreen、ImportScreen、BankScreens
 - [x] 安装 find-skills、project-memory、self-improving-agent
 - [x] ponytail 实体迁移到 E 盘
