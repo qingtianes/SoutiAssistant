@@ -9,7 +9,8 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.camera.core.AspectRatio
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
+import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
@@ -112,7 +113,8 @@ fun ScanScreen(onBack: () -> Unit) {
 
     val previewView = remember {
         PreviewView(context).apply {
-            scaleType = PreviewView.ScaleType.FIT_CENTER
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
         }
     }
 
@@ -467,13 +469,13 @@ private class CameraScanController(
                 cameraProvider = provider
 
                 val preview = Preview.Builder()
-                    .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                    .setResolutionSelector(ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY).build())
                     .build()
                     .also { it.setSurfaceProvider(previewView.surfaceProvider) }
 
                 val imageAnalysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .setTargetAspectRatio(AspectRatio.RATIO_16_9)
+                    .setResolutionSelector(ResolutionSelector.Builder().setAspectRatioStrategy(AspectRatioStrategy.RATIO_16_9_FALLBACK_AUTO_STRATEGY).build())
                     .build()
                     .also { analysis ->
                         analysis.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -562,7 +564,7 @@ private class CameraScanController(
         val rotW = if (rotation % 180 == 0) crop.width().toFloat() else crop.height().toFloat()
         val rotH = if (rotation % 180 == 0) crop.height().toFloat() else crop.width().toFloat()
 
-        val scale = minOf(viewW.toFloat() / rotW, viewH.toFloat() / rotH)
+        val scale = maxOf(viewW.toFloat() / rotW, viewH.toFloat() / rotH)
         val offX = (viewW - rotW * scale) / 2f
         val offY = (viewH - rotH * scale) / 2f
 
