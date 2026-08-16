@@ -27,3 +27,12 @@ related:
 - HarmonyOS 暂缓，先完成 Android；HarmonyOS 可经卓易通兼容安卓程序。
 - 已抽出 OcrQuestionProcessor、QuestionMatcher 两个纯逻辑组件并补测试。
 - 代码精简三件套：ponytail 防过度设计、code-simplification 拆后清晰化、ponytail-review 清点可删项。
+
+## 2026-08-17
+- 输出窗默认位置：删除该设置，保持“输出窗初始跟随主浮窗下方、可自由拖动”。
+- 隐私：关闭系统备份 allowBackup=false，确保题库/设置仅本机。
+- 扫描搜题：FILL_CENTER 居中裁剪填满预览窗口；新增取景框、双指/按钮缩放、暂停/继续。
+- 主页：采用 B 极简卡片流风格；题库区置于快捷搜题上方；右上角 ⓘ 进入使用说明。
+- 图标：替换为 WorkBuddy 交付的位图图标，删除 adaptive icon。
+- 发布命名：APK 统一为 SoutiAssistant-vX.Y.Z-release.apk。
+- 使用说明：APP 与 README 均以“题库导入”为第一步。

@@ -45,6 +45,13 @@
 3. 双指捏合或右下角 +/− 缩放画面。
 4. 下方显示答案，点“暂停”锁定结果，点“继续”恢复扫描。
 
+## 设备兼容
+
+- Android 8.0 及以上（minSdk 26，targetSdk 33）
+- CPU：arm64-v8a / armeabi-v7a / x86_64
+- 鸿蒙 HarmonyOS：可通过卓易通运行安卓版（录屏授权偶发不启动，见 docs/KNOWN_ISSUES.md）
+- 权限：悬浮窗、录屏、摄像头、通知、前台服务
+
 ## 技术栈
 
 - Kotlin + Jetpack Compose（主页）+ 传统 View（悬浮窗）
@@ -58,11 +65,11 @@
 ```text
 app/src/main/java/com/dingding/souti/
 ├── model/       Bank、Question、SearchResult
-├── repository/  QuestionBank、QuestionRepository、QuestionMatcher
+├── repository/  QuestionBank、QuestionRepository、QuestionMatcher、SettingsStore、SettingsLogic
 ├── import/      Importer、FileFormatDetector、BankChunker、Txt/Docx/Pdf/Xls 解析器
 ├── ocr/         OcrBridge、OcrHelper、OcrQuestionProcessor
-├── overlay/     FloatWindowService 及拆出的 8 个组件
-└── ui/          MainActivity、HomeScreen、ImportScreen、BankScreens
+├── overlay/     FloatWindowService 及拆出的组件
+└── ui/          MainActivity、HomeScreen、ImportScreen、BankScreens、ScanScreen、SettingsScreen、UsageGuideScreen
 ```
 
 ## FloatWindowService 已拆组件
@@ -75,12 +82,14 @@ app/src/main/java/com/dingding/souti/
 - `SearchUiBuilder`：搜题界面
 - `ScreenReadWindowBuilder`：读屏小窗
 - `StandbyUiBuilder`：待机主界面
+- `OutputWindowBuilder`：独立输出窗构建
 
 ## 构建与验证
 
 - 构建前设置 `JAVA_HOME` 到 JDK 21（本机：`E:\Huawei\DevEco Studio\jbr`）
 - 回归命令：`gradlew.bat testDebugUnitTest lintDebug assembleDebug --no-daemon`
-- 当前：40 项单元测试通过，Lint 0 error，可打包 debug APK
+- 单元测试通过，Lint 0 error
+- 发布包命名规范：`SoutiAssistant-vX.Y.Z-release.apk`
 
 ## 版本历史
 
