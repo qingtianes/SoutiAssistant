@@ -1,7 +1,7 @@
 package com.dingding.souti.ocr
 
-import com.dingding.souti.Question
-import com.dingding.souti.SearchResult
+import com.dingding.souti.model.Question
+import com.dingding.souti.model.SearchResult
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

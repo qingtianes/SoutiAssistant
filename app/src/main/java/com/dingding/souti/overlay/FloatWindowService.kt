@@ -1,7 +1,7 @@
 package com.dingding.souti.overlay
 
-import com.dingding.souti.QuestionBank
-import com.dingding.souti.SearchResult
+import com.dingding.souti.repository.QuestionBank
+import com.dingding.souti.model.SearchResult
 import com.dingding.souti.ocr.OcrBridge
 import com.dingding.souti.ocr.OcrQuestionProcessor
 import com.dingding.souti.ui.MainActivity

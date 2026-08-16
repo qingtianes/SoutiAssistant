@@ -1,48 +1,9 @@
-package com.dingding.souti
+package com.dingding.souti.repository
 
 import android.content.Context
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-
-/**
- * 搜索结果（含题库名+分数）
- */
-data class SearchResult(
-    val question: Question,
-    val bankName: String,
-    val score: Int
-)
-
-/**
- * 题库（一个导入文件 = 一个题库）
- */
-data class Bank(
-    val id: Long,
-    val name: String,
-    val sourceFile: String,
-    val createdAt: Long,
-    val sourceModifiedAt: Long = 0,  // ★ 源文件最后修改时间（SAF DATE_MODIFIED）
-    val type: String // "manual" 或 "ai"
-) {
-    fun formattedTime(): String =
-        SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(createdAt))
-    fun formattedSourceTime(): String =
-        if (sourceModifiedAt > 0) SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.CHINA).format(Date(sourceModifiedAt))
-        else ""
-}
-
-/**
- * 题目
- */
-data class Question(
-    val id: Long,
-    val bankId: Long,
-    val stem: String,
-    val options: List<String>,
-    val answer: String,
-    val source: String
-)
+import com.dingding.souti.model.Bank
+import com.dingding.souti.model.Question
+import com.dingding.souti.model.SearchResult
 
 /**
  * 题库管理器：对上层提供题库读取、导入、启用和搜索；底层存取委托给 QuestionRepository。

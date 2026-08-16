@@ -1,8 +1,8 @@
 package com.dingding.souti.ui
 
-import com.dingding.souti.Bank
-import com.dingding.souti.Question
-import com.dingding.souti.QuestionBank
+import com.dingding.souti.model.Bank
+import com.dingding.souti.model.Question
+import com.dingding.souti.repository.QuestionBank
 import com.dingding.souti.import.Importer
 import com.dingding.souti.ocr.OcrBridge
 import com.dingding.souti.ocr.OcrHelper

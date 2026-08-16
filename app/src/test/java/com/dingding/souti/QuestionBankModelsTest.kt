@@ -1,5 +1,9 @@
 package com.dingding.souti
 
+import com.dingding.souti.model.Bank
+import com.dingding.souti.model.Question
+import com.dingding.souti.model.SearchResult
+
 import java.util.TimeZone
 import org.junit.Assert.assertEquals
 import org.junit.Test

@@ -1,4 +1,7 @@
-package com.dingding.souti
+package com.dingding.souti.repository
+
+import com.dingding.souti.model.Bank
+import com.dingding.souti.model.Question
 
 import android.content.Context
 import org.json.JSONArray

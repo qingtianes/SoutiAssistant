@@ -1,6 +1,6 @@
 package com.dingding.souti.ocr
 
-import com.dingding.souti.SearchResult
+import com.dingding.souti.model.SearchResult
 
 /**
  * OCR 文本到题库查询之间的纯 Kotlin 处理逻辑。

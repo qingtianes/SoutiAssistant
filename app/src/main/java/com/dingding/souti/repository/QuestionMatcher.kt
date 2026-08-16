@@ -1,4 +1,4 @@
-package com.dingding.souti
+package com.dingding.souti.repository
 
 /**
  * 题目匹配打分组件：只负责比较 OCR 查询文本和题库题干的相关度。

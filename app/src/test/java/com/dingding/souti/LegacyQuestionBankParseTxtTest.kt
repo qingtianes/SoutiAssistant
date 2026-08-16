@@ -1,5 +1,7 @@
 package com.dingding.souti
 
+import com.dingding.souti.repository.QuestionBank
+
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
