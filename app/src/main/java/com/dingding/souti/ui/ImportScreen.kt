@@ -1,60 +1,61 @@
 package com.dingding.souti.ui
 
-import com.dingding.souti.model.Bank
 import com.dingding.souti.model.Question
 import com.dingding.souti.repository.QuestionBank
 import com.dingding.souti.import.Importer
-import com.dingding.souti.ocr.OcrBridge
-import com.dingding.souti.ocr.OcrHelper
-import com.dingding.souti.overlay.FloatWindowService
 
 import android.content.Context
-import android.content.Intent
-import android.graphics.Rect
 import android.net.Uri
-import android.os.Bundle
-import android.provider.Settings
-import android.util.Log
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.dingding.souti.ui.theme.SoutiAssistantTheme
+import com.dingding.souti.ui.theme.LocalGlass
 
 @Composable
 fun ImportScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val glass = LocalGlass.current
     val bank = remember { QuestionBank(context) }
     var parsedQuestions by remember { mutableStateOf<List<Question>?>(null) }
     var sourceFileName by remember { mutableStateOf("") }
-    var sourceModifiedAt by remember { mutableStateOf(0L) }  // ★ 源文件修改时间
+    var sourceModifiedAt by remember { mutableStateOf(0L) }
     var importMsg by remember { mutableStateOf("") }
     var parsing by remember { mutableStateOf(false) }
     var showNameDialog by remember { mutableStateOf(false) }
     var bankName by remember { mutableStateOf("") }
-    // ★ 字数验证状态
     var importCoverage by remember { mutableStateOf(100) }
     var importSourceLen by remember { mutableStateOf(0) }
     var importParsedLen by remember { mutableStateOf(0) }
@@ -69,13 +70,11 @@ fun ImportScreen(onBack: () -> Unit) {
                 } ?: uri.lastPathSegment ?: "未知题库"
             } catch (_: Exception) { uri.lastPathSegment ?: "未知题库" }
             val cleanName = fileName.substringAfterLast('/').substringAfterLast("%2F").replace("%20", " ")
-            // ★ 读取源文件最后修改时间（DocumentProvider 标准字段 "date_modified"，兼容所有 API）
-            // 直接给外层 state 赋值（不要局部 val 同名覆盖）
             sourceModifiedAt = try {
                 context.contentResolver.query(
                     uri, arrayOf("date_modified"), null, null, null
                 )?.use { cursor ->
-                    if (cursor.moveToFirst()) cursor.getLong(0) * 1000  // 秒 → 毫秒
+                    if (cursor.moveToFirst()) cursor.getLong(0) * 1000
                     else 0L
                 } ?: 0L
             } catch (_: Exception) { 0L }
@@ -85,7 +84,6 @@ fun ImportScreen(onBack: () -> Unit) {
             importCoverage = 100
             importSourceLen = 0
             importParsedLen = 0
-            // 后台线程解析（大文件不阻塞 UI）
             Thread {
                 val result = try {
                     Importer.parse(context, uri, cleanName)
@@ -99,7 +97,6 @@ fun ImportScreen(onBack: () -> Unit) {
                         return@runOnUiThreadCompat
                     }
                     if (result.chunks.isNotEmpty()) {
-                        // 切块模式：每块整段作为题干（题干+选项+答案原样保留）
                         val questions = result.chunks.map { chunk ->
                             Question(
                                 id = System.currentTimeMillis() + (0..999).random(),
@@ -111,7 +108,6 @@ fun ImportScreen(onBack: () -> Unit) {
                             )
                         }
                         parsedQuestions = questions
-                        // ★ 字数验证：覆盖率低时直接拒绝导入
                         val cov = result.coverage()
                         if (result.sourceLength > 0 && cov < 60) {
                             parsedQuestions = null
@@ -132,38 +128,42 @@ fun ImportScreen(onBack: () -> Unit) {
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7)).statusBarsPadding()) {
-        Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "返回") }
-            Text("手动导入", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = Green)
-        }
-        Column(modifier = Modifier.padding(16.dp)) {
-            Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFF3E5F5))) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    Text("支持的格式", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = Color(0xFF6A1B9A))
+    GlassBackground {
+        Column(modifier = Modifier.fillMaxSize().statusBarsPadding()) {
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, "返回", tint = glass.textPrimary) }
+                Text("手动导入", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = glass.textPrimary)
+            }
+            Column(modifier = Modifier.padding(16.dp)) {
+                GlassCard(modifier = Modifier.fillMaxWidth()) {
+                    Text("支持的格式", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = glass.primary)
                     Spacer(Modifier.height(8.dp))
-                    Text("✅ .txt / .docx / .pdf（文字版） / .xls\n✅ 三种排版都识别：有序号 / 无序号空行分隔 / 无序号选项对齐\n❌ 扫描版 PDF（无文本层）无法导入", fontSize = 13.sp, color = Color(0xFF333333))
+                    Text(
+                        "✅ .txt / .docx / .pdf（文字版） / .xls\n✅ 三种排版都识别：有序号 / 无序号空行分隔 / 无序号选项对齐\n❌ 扫描版 PDF（无文本层）无法导入",
+                        fontSize = 13.sp, color = glass.textPrimary
+                    )
                 }
-            }
-            Spacer(Modifier.height(20.dp))
-            Button(
-                onClick = { fileLauncher.launch(arrayOf("text/plain", "application/octet-stream", "application/pdf", "*/*")) },
-                modifier = Modifier.fillMaxWidth().height(48.dp),
-                enabled = !parsing,
-                colors = ButtonDefaults.buttonColors(containerColor = Green)
-            ) { Text("选择文件导入（txt/docx/pdf/xls）", fontSize = 15.sp) }
-            if (parsing) {
-                Spacer(Modifier.height(16.dp))
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = Green)
-                    Spacer(Modifier.width(12.dp))
-                    Text("正在解析题库...", fontSize = 13.sp, color = Color(0xFF666666))
+                Spacer(Modifier.height(20.dp))
+                Button(
+                    onClick = { fileLauncher.launch(arrayOf("text/plain", "application/octet-stream", "application/pdf", "*/*")) },
+                    modifier = Modifier.fillMaxWidth().height(48.dp),
+                    enabled = !parsing,
+                    shape = RoundedCornerShape(13.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = glass.primary, contentColor = glass.onPrimary)
+                ) { Text("选择文件导入（txt/docx/pdf/xls）", fontSize = 15.sp) }
+                if (parsing) {
+                    Spacer(Modifier.height(16.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp, color = glass.primary)
+                        Spacer(Modifier.width(12.dp))
+                        Text("正在解析题库...", fontSize = 13.sp, color = glass.textSecondary)
+                    }
                 }
-            }
-            if (importMsg.isNotEmpty()) {
-                Spacer(Modifier.height(16.dp))
-                Card(modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(8.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFE8F5E9))) {
-                    Text(importMsg, modifier = Modifier.padding(12.dp), fontSize = 13.sp, color = Color(0xFF1B5E20))
+                if (importMsg.isNotEmpty()) {
+                    Spacer(Modifier.height(16.dp))
+                    GlassCard(modifier = Modifier.fillMaxWidth()) {
+                        Text(importMsg, fontSize = 13.sp, color = glass.textPrimary)
+                    }
                 }
             }
         }
@@ -175,23 +175,21 @@ fun ImportScreen(onBack: () -> Unit) {
             title = { Text("为题库起个名字") },
             text = {
                 Column {
-                    Text("文件名：$sourceFileName", fontSize = 11.sp, color = Color.Gray)
+                    Text("文件名：$sourceFileName", fontSize = 11.sp, color = glass.textSecondary)
                     Spacer(Modifier.height(8.dp))
                     OutlinedTextField(value = bankName, onValueChange = { bankName = it }, singleLine = true, label = { Text("题库名") })
                     Spacer(Modifier.height(8.dp))
-                    Text("已识别 ${parsedQuestions!!.size} 道题", fontSize = 12.sp, color = Green)
-                    // ★ 字数验证显示
+                    Text("已识别 ${parsedQuestions!!.size} 道题", fontSize = 12.sp, color = glass.primary)
                     if (importSourceLen > 0) {
                         Spacer(Modifier.height(6.dp))
                         val covColor = when {
-                            importCoverage >= 90 -> Green
-                            importCoverage >= 70 -> Color(0xFFF57C00) // 橙
+                            importCoverage >= 90 -> glass.primary
+                            importCoverage >= 70 -> Color(0xFFF57C00)
                             else -> Red
                         }
                         Text(
                             "字数对比：源 ${importSourceLen} / 解析 ${importParsedLen}（覆盖率 ${importCoverage}%）",
-                            fontSize = 11.sp,
-                            color = covColor
+                            fontSize = 11.sp, color = covColor
                         )
                         if (importCoverage < 90) {
                             Spacer(Modifier.height(2.dp))
@@ -212,7 +210,7 @@ fun ImportScreen(onBack: () -> Unit) {
                     importMsg = "导入成功！\n题库名：$name\n题目数：${parsedQuestions!!.size}"
                     parsedQuestions = null
                     showNameDialog = false
-                }) { Text("确定导入", color = Green, fontWeight = FontWeight.Bold) }
+                }) { Text("确定导入", color = glass.primary, fontWeight = FontWeight.Bold) }
             },
             dismissButton = { TextButton(onClick = { showNameDialog = false; parsedQuestions = null }) { Text("取消", color = Red) } }
         )
@@ -226,7 +224,6 @@ fun isServiceRunning(context: android.content.Context, serviceClass: Class<*>): 
         manager?.getRunningServices(Int.MAX_VALUE)
             ?.any { it.service.className == serviceClass.name } ?: false
     } catch (e: Throwable) {
-        // Android 14+ 普通应用不能 getRunningServices（SecurityException），返回 false
         false
     }
 }

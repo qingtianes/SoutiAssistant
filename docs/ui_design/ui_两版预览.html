@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>搜题助手 · UI 两版预览</title>
+<style>
+  :root{
+    --mono: 'SF Mono', 'JetBrains Mono', Consolas, monospace;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+    background:#0b0f14;
+    color:#e6edf3;
+    min-height:100vh;
+    padding:28px 16px 60px;
+  }
+
+  /* ===== 顶部控制栏 ===== */
+  .ctrl{
+    max-width:1060px;margin:0 auto 26px;
+    display:flex;align-items:center;justify-content:space-between;
+    gap:16px;flex-wrap:wrap;
+  }
+  .ctrl h1{font-size:19px;font-weight:700;letter-spacing:.3px;}
+  .ctrl h1 span{color:#5c6670;font-weight:400;font-size:13px;margin-left:10px;}
+  .tabs{display:flex;gap:8px;background:#161d26;border-radius:12px;padding:4px;}
+  .tab{
+    padding:8px 18px;border:none;border-radius:9px;cursor:pointer;
+    background:transparent;color:#9aa7b3;font-size:14px;font-weight:600;
+    transition:.2s;font-family:inherit;
+  }
+  .tab.active{background:#233043;color:#fff;}
+  .tab:hover{color:#fff;}
+
+  /* ===== 舞台：两版并排 ===== */
+  .stage{max-width:1060px;margin:0 auto;display:flex;gap:28px;justify-content:center;flex-wrap:wrap;}
+  .card-wrap{width:340px;}
+  .card-title{
+    display:flex;align-items:center;justify-content:space-between;
+    margin-bottom:12px;
+  }
+  .card-title .name{font-size:15px;font-weight:700;}
+  .card-title .desc{font-size:12px;color:#8a97a5;}
+
+  /* 日月开关 */
+  .toggle{
+    position:relative;width:58px;height:30px;border-radius:15px;
+    background:#2a3542;cursor:pointer;transition:.3s;border:none;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 7px;box-shadow:inset 0 1px 3px rgba(0,0,0,.4);
+  }
+  .toggle .sun,.toggle .moon{font-size:14px;line-height:1;transition:.3s;z-index:1;}
+  .toggle .knob{
+    position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;
+    background:#fff;transition:.3s cubic-bezier(.34,1.56,.64,1);
+    box-shadow:0 1px 4px rgba(0,0,0,.4);
+  }
+  .toggle.night .knob{left:31px;background:#ffd866;}
+
+  /* ===== 手机 mockup ===== */
+  .phone{
+    width:100%;border-radius:34px;overflow:hidden;
+    box-shadow:0 20px 60px rgba(0,0,0,.55),0 0 0 1px rgba(255,255,255,.06);
+    position:relative;
+  }
+  .screen{
+    height:680px;overflow:hidden;display:flex;flex-direction:column;
+    transition:background .4s,color .4s;
+  }
+
+  /* ============ 版 A：深空科技极简 ============ */
+  .va.screen{background:#f4f6f8;color:#16213e;}
+  .va.screen.night{background:#0d1b2a;color:#e8eef5;}
+  .va .navbar{display:flex;align-items:center;padding:18px 18px 8px;}
+  .va .navbar .ttl{font-size:23px;font-weight:800;letter-spacing:.2px;}
+  .va .navbar .sub{font-size:12px;opacity:.55;margin-top:3px;}
+  .va .navbar .info{
+    margin-left:auto;width:34px;height:34px;border-radius:50%;
+    background:#1d9e75;color:#fff;display:flex;align-items:center;justify-content:center;
+    font-weight:700;font-size:16px;cursor:pointer;
+    box-shadow:0 3px 10px rgba(29,158,117,.35);
+  }
+  .va .body{flex:1;overflow:auto;padding:14px 18px 20px;}
+  .va .sec{font-size:12px;font-weight:700;opacity:.5;letter-spacing:.5px;margin:16px 0 8px;}
+  .va .row{display:flex;gap:10px;}
+  .va .bank{
+    flex:1;border-radius:16px;padding:16px 14px;cursor:pointer;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.05),0 6px 18px rgba(0,0,0,.05);
+  }
+  .va.night .bank{background:#182a3e;box-shadow:0 1px 2px rgba(0,0,0,.4);}
+  .va .bank .ic{font-size:22px;}
+  .va .bank .lb{font-size:13px;font-weight:700;margin-top:8px;}
+  .va .bank .sm{font-size:11px;opacity:.5;margin-top:2px;}
+  .va .card{
+    border-radius:16px;padding:15px;margin-bottom:10px;cursor:pointer;
+    background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.05),0 6px 18px rgba(0,0,0,.05);
+  }
+  .va.night .card{background:#182a3e;box-shadow:0 1px 2px rgba(0,0,0,.4);}
+  .va .card .head{display:flex;align-items:center;}
+  .va .card .ht{font-size:15px;font-weight:700;}
+  .va .card .dot{margin-left:auto;width:8px;height:8px;border-radius:50%;}
+  .va .card .st{font-size:11px;opacity:.5;margin-left:6px;}
+  .va .card .desc{font-size:12px;opacity:.55;margin-top:4px;}
+  .va .card .arrow{margin-left:auto;font-size:20px;opacity:.4;}
+  .va .btn{
+    margin-top:12px;height:42px;border-radius:12px;border:none;cursor:pointer;
+    background:#1d9e75;color:#fff;font-size:14px;font-weight:700;width:100%;
+    box-shadow:0 4px 14px rgba(29,158,117,.35);font-family:inherit;
+  }
+  .va.night .btn{background:#34d399;color:#04342c;box-shadow:0 4px 16px rgba(52,211,153,.35);}
+  .va .disabled{opacity:.45;}
+  .va .chip{font-size:11px;padding:3px 9px;border-radius:20px;background:#eceff3;opacity:.6;}
+  .va.night .chip{background:#22364c;}
+
+  /* ============ 版 B：玻璃拟态 ============ */
+  .vb.screen{
+    background:linear-gradient(160deg,#e8f0f4,#d6e2ea 60%,#c9d9e2);
+    color:#0f2637;
+  }
+  .vb.screen.night{
+    background:radial-gradient(120% 90% at 15% 0%,#123a52 0%,#0d1b2a 55%,#0a1428 100%);
+    color:#e8f2fb;
+  }
+  .vb .glow{
+    position:absolute;border-radius:50%;filter:blur(60px);pointer-events:none;
+  }
+  .vb.screen.night .glow.a{top:-60px;left:-40px;width:220px;height:220px;background:rgba(62,207,207,.28);}
+  .vb.screen.night .glow.b{bottom:40px;right:-50px;width:200px;height:200px;background:rgba(29,158,117,.25);}
+  .vb.screen:not(.night) .glow.a{top:-50px;left:-30px;width:200px;height:200px;background:rgba(62,207,207,.30);}
+  .vb.screen:not(.night) .glow.b{bottom:30px;right:-40px;width:180px;height:180px;background:rgba(29,158,117,.22);}
+  .vb .navbar{display:flex;align-items:center;padding:18px 18px 8px;position:relative;z-index:1;}
+  .vb .logo{
+    width:38px;height:38px;border-radius:12px;margin-right:11px;
+    display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 8px;
+    background:linear-gradient(150deg,rgba(13,27,42,.92),rgba(18,40,62,.92));
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 4px 14px rgba(0,0,0,.35);
+  }
+  .vb.screen:not(.night) .logo{background:linear-gradient(150deg,#16324a,#0d1b2a);}
+  .vb .logo .line{height:3px;border-radius:2px;background:rgba(232,242,251,.85);}
+  .vb .logo .line.mid{width:70%;}
+  .vb .logo .line.opt{
+    width:58%;height:3px;border-radius:2px;
+    background:linear-gradient(90deg,#3ecfcf,#34d399);
+    box-shadow:0 0 8px rgba(62,207,207,.9);
+  }
+  .vb .navbar .ttl{font-size:19px;font-weight:800;letter-spacing:.3px;}
+  .vb .navbar .sub{font-size:11px;opacity:.6;margin-top:2px;}
+  .vb .navbar .info{
+    margin-left:auto;width:32px;height:32px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;cursor:pointer;
+    background:rgba(255,255,255,.28);backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.35);font-weight:700;font-size:15px;
+  }
+  .vb .body{flex:1;overflow:auto;padding:12px 18px 22px;position:relative;z-index:1;}
+  .vb .sec{font-size:11px;font-weight:700;letter-spacing:1px;opacity:.55;margin:15px 0 8px;}
+  .vb .row{display:flex;gap:10px;}
+  .vb .bank{
+    flex:1;border-radius:18px;padding:16px 13px;cursor:pointer;position:relative;overflow:hidden;
+    background:rgba(255,255,255,.42);backdrop-filter:blur(16px);
+    border:1px solid rgba(255,255,255,.6);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.75),0 8px 24px rgba(10,20,40,.12);
+  }
+  .vb.screen.night .bank{
+    background:rgba(20,40,60,.45);border:1px solid rgba(90,160,190,.22);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.35);
+  }
+  .vb .bank .ic{font-size:21px;}
+  .vb .bank .lb{font-size:13px;font-weight:700;margin-top:8px;}
+  .vb .bank .sm{font-size:10px;opacity:.55;margin-top:2px;}
+  .vb .card{
+    border-radius:18px;padding:15px;margin-bottom:10px;cursor:pointer;position:relative;overflow:hidden;
+    background:rgba(255,255,255,.42);backdrop-filter:blur(16px);
+    border:1px solid rgba(255,255,255,.6);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.75),0 8px 24px rgba(10,20,40,.12);
+  }
+  .vb.screen.night .card{
+    background:rgba(20,40,60,.45);border:1px solid rgba(90,160,190,.22);
+    box-shadow:inset 0 1px 0 rgba(255,255,255,.08),0 8px 24px rgba(0,0,0,.35);
+  }
+  .vb .card .head{display:flex;align-items:center;}
+  .vb .card .ht{font-size:15px;font-weight:700;}
+  .vb .card .dot{margin-left:auto;width:8px;height:8px;border-radius:50%;box-shadow:0 0 8px currentColor;}
+  .vb .card .st{font-size:11px;opacity:.6;margin-left:6px;}
+  .vb .card .desc{font-size:12px;opacity:.6;margin-top:4px;}
+  .vb .card .arrow{margin-left:auto;font-size:20px;opacity:.45;}
+  .vb .btn{
+    margin-top:12px;height:42px;border-radius:13px;border:none;cursor:pointer;
+    color:#04342c;font-size:14px;font-weight:700;width:100%;font-family:inherit;
+    background:linear-gradient(135deg,#3ecfcf,#34d399);
+    box-shadow:0 6px 18px rgba(62,207,207,.4);
+  }
+  .vb .disabled{opacity:.42;}
+  .vb .chip{
+    font-size:10px;padding:3px 9px;border-radius:20px;
+    background:rgba(255,255,255,.35);backdrop-filter:blur(8px);opacity:.7;
+  }
+  .vb.screen.night .chip{background:rgba(255,255,255,.08);}
+
+  .on{background:#1d9e75 !important;box-shadow:0 0 10px rgba(29,158,117,.6) !important;}
+  .vb .on{background:linear-gradient(135deg,#3ecfcf,#34d399) !important;box-shadow:0 0 12px rgba(62,207,207,.8) !important;}
+</style>
+</head>
+<body>
+  <div class="ctrl">
+    <h1>搜题助手 UI 预览<span>两版 × 浅色/深色，挑一版</span></h1>
+    <div class="tabs">
+      <button class="tab" onclick="showVersion('va')">版 A · 深空极简</button>
+      <button class="tab active" onclick="showVersion('vb')">版 B · 玻璃拟态</button>
+    </div>
+  </div>
+
+  <div class="stage">
+    <!-- ============ 版 A ============ -->
+    <div class="card-wrap" id="wrap-va" style="display:none;">
+      <div class="card-title">
+        <div><div class="name">版 A · 深空科技极简</div><div class="desc">Material 3 · 克制的奢华</div></div>
+        <button class="toggle" id="togA" onclick="toggleNight('va')"><span class="sun">☀️</span><span class="moon">🌙</span><span class="knob"></span></button>
+      </div>
+      <div class="phone"><div class="screen va" id="va">
+        <div class="navbar">
+          <div>
+            <div class="ttl">搜题助手</div>
+            <div class="sub">浮窗 · 读屏 · 摄像头 · 本地题库</div>
+          </div>
+          <div class="info">ⓘ</div>
+        </div>
+        <div class="body">
+          <div class="sec">题库</div>
+          <div class="row">
+            <div class="bank"><div class="ic">📁</div><div class="lb">智能导入</div><div class="sm">txt / docx / pdf / xls</div></div>
+            <div class="bank"><div class="ic">📚</div><div class="lb">题库总览</div><div class="sm">已导入 3 个题库</div></div>
+          </div>
+          <div class="sec">快捷搜题</div>
+          <div class="card">
+            <div class="head"><span class="ht">浮窗搜题</span><span class="dot on"></span><span class="st">运行中</span></div>
+            <div class="desc">绿框实时识别 · 单题答案输出</div>
+            <button class="btn">关闭服务</button>
+          </div>
+          <div class="card">
+            <div class="head"><span class="ht">读屏搜题</span><span class="dot"></span><span class="st">未开启</span></div>
+            <div class="desc">全屏识别 · 多题答案输出</div>
+          </div>
+          <div class="card">
+            <div class="head"><span class="ht">扫描搜题</span><span class="arrow">›</span></div>
+            <div class="desc">摄像头实时扫描 · 取景框识别</div>
+          </div>
+          <div class="card disabled">
+            <div class="head"><span class="ht">AI 搜题</span><span class="chip">待开发</span></div>
+            <div class="desc">在线大模型搜题</div>
+          </div>
+          <div class="sec">设置</div>
+          <div class="card">
+            <div class="head"><span class="ht">设置</span><span class="arrow">›</span></div>
+            <div class="desc">权限 / 识别匹配 / 浮窗显示 / 扫描 / 关于</div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+
+    <!-- ============ 版 B ============ -->
+    <div class="card-wrap" id="wrap-vb">
+      <div class="card-title">
+        <div><div class="name">版 B · 玻璃拟态</div><div class="desc">对应图标 · 镜面高光 + 发光</div></div>
+        <button class="toggle" id="togB" onclick="toggleNight('vb')"><span class="sun">☀️</span><span class="moon">🌙</span><span class="knob"></span></button>
+      </div>
+      <div class="phone"><div class="screen vb night" id="vb">
+        <div class="glow a"></div><div class="glow b"></div>
+        <div class="navbar">
+          <div class="logo"><div class="line"></div><div class="line mid"></div><div class="line opt"></div></div>
+          <div>
+            <div class="ttl">搜题助手</div>
+            <div class="sub">浮窗 · 读屏 · 摄像头 · 本地题库</div>
+          </div>
+          <div class="info">ⓘ</div>
+        </div>
+        <div class="body">
+          <div class="sec">题库</div>
+          <div class="row">
+            <div class="bank"><div class="ic">📁</div><div class="lb">智能导入</div><div class="sm">txt / docx / pdf / xls</div></div>
+            <div class="bank"><div class="ic">📚</div><div class="lb">题库总览</div><div class="sm">已导入 3 个题库</div></div>
+          </div>
+          <div class="sec">快捷搜题</div>
+          <div class="card">
+            <div class="head"><span class="ht">浮窗搜题</span><span class="dot on"></span><span class="st">运行中</span></div>
+            <div class="desc">绿框实时识别 · 单题答案输出</div>
+            <button class="btn">关闭服务</button>
+          </div>
+          <div class="card">
+            <div class="head"><span class="ht">读屏搜题</span><span class="dot"></span><span class="st">未开启</span></div>
+            <div class="desc">全屏识别 · 多题答案输出</div>
+          </div>
+          <div class="card">
+            <div class="head"><span class="ht">扫描搜题</span><span class="arrow">›</span></div>
+            <div class="desc">摄像头实时扫描 · 取景框识别</div>
+          </div>
+          <div class="card disabled">
+            <div class="head"><span class="ht">AI 搜题</span><span class="chip">待开发</span></div>
+            <div class="desc">在线大模型搜题</div>
+          </div>
+          <div class="sec">设置</div>
+          <div class="card">
+            <div class="head"><span class="ht">设置</span><span class="arrow">›</span></div>
+            <div class="desc">权限 / 识别匹配 / 浮窗显示 / 扫描 / 关于</div>
+          </div>
+        </div>
+      </div></div>
+    </div>
+  </div>
+
+<script>
+  function showVersion(v){
+    document.getElementById('wrap-va').style.display = v==='va' ? '' : 'none';
+    document.getElementById('wrap-vb').style.display = v==='vb' ? '' : 'none';
+    document.querySelectorAll('.tab').forEach((t,i)=>{
+      t.classList.toggle('active', (v==='va'&&i===0)||(v==='vb'&&i===1));
+    });
+  }
+  function toggleNight(v){
+    const el = document.getElementById(v);
+    const tog = document.getElementById('tog'+ (v==='va'?'A':'B'));
+    const night = el.classList.toggle('night');
+    tog.classList.toggle('night', night);
+  }
+  // 初始化：版 B 默认展示夜晚版，开关同步
+  document.getElementById('togB').classList.add('night');
+</script>
+</body>
+</html>

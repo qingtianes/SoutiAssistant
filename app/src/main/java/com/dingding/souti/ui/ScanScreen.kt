@@ -20,7 +20,6 @@ import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
@@ -40,8 +39,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -64,7 +61,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -75,6 +76,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dingding.souti.model.SearchResult
 import com.dingding.souti.repository.QuestionBank
 import com.dingding.souti.repository.SettingsStore
+import com.dingding.souti.ui.theme.LocalGlass
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -98,6 +100,7 @@ private const val ZOOM_STEP = 1.4f
 @Composable
 fun ScanScreen(onBack: () -> Unit) {
     val context = LocalContext.current
+    val glass = LocalGlass.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val bank = remember { QuestionBank(context.applicationContext) }
     val scope = rememberCoroutineScope()
@@ -170,7 +173,7 @@ fun ScanScreen(onBack: () -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF7F7F7))
+            .background(glass.bgMid)
             .statusBarsPadding()
     ) {
         Row(
@@ -180,20 +183,20 @@ fun ScanScreen(onBack: () -> Unit) {
             verticalAlignment = Alignment.CenterVertically
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.Filled.ArrowBack, "返回")
+                Icon(Icons.Filled.ArrowBack, "返回", tint = glass.textPrimary)
             }
             Text(
                 text = "扫描搜题",
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold,
-                color = Green
+                color = glass.textPrimary
             )
             Spacer(Modifier.weight(1f))
             if (recognizedText.isNotBlank()) {
                 Text(
                     text = "识别中",
                     fontSize = 12.sp,
-                    color = Color.Gray
+                    color = glass.textSecondary
                 )
             }
         }
@@ -269,15 +272,15 @@ fun ScanScreen(onBack: () -> Unit) {
                         text = "匹配答案",
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color.Gray
+                        color = glass.textSecondary
                     )
                     TextButton(onClick = { paused = !paused }) {
-                        Text(if (paused) "继续" else "暂停", fontSize = 14.sp, color = Green)
+                        Text(if (paused) "继续" else "暂停", fontSize = 14.sp, color = glass.primary)
                     }
                     Spacer(Modifier.weight(1f))
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Filled.Close, "关闭")
+                        Icon(Icons.Filled.Close, "关闭", tint = glass.textPrimary)
                     }
                 }
                 Spacer(Modifier.height(6.dp))
@@ -293,7 +296,7 @@ fun ScanScreen(onBack: () -> Unit) {
                                 else -> "未找到匹配题目\n识别文字：${recognizedText.take(80)}"
                             },
                             fontSize = 13.sp,
-                            color = Color.Gray,
+                            color = glass.textSecondary,
                             textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
@@ -311,6 +314,7 @@ fun ScanScreen(onBack: () -> Unit) {
 
 @Composable
 private fun ViewfinderOverlay(fraction: Float, modifier: Modifier = Modifier) {
+    val textMeasurer = rememberTextMeasurer()
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
@@ -334,6 +338,13 @@ private fun ViewfinderOverlay(fraction: Float, modifier: Modifier = Modifier) {
             cornerRadius = CornerRadius(VF_CORNER_DP.dp.toPx(), VF_CORNER_DP.dp.toPx()),
             style = Stroke(width = 3.dp.toPx())
         )
+
+        // ★ A. 角标：放绿框外（左上角上方），呼应 App 图标，不遮挡框内识别内容
+        val label = textMeasurer.measure(
+            AnnotatedString("A."),
+            style = TextStyle(color = Color(0xFF00E676), fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        )
+        drawText(label, topLeft = Offset(left, (top - 30.dp.toPx()).coerceAtLeast(0f)))
     }
 }
 
@@ -373,58 +384,49 @@ private fun ZoomControls(
 
 @Composable
 private fun SearchResultCard(result: SearchResult) {
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(bottom = 8.dp),
-        shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = BorderStroke(1.dp, Color(0x1F000000))
-    ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = result.question.stem,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color(0xFF222222),
-                maxLines = 4,
-                overflow = TextOverflow.Ellipsis
-            )
-            if (result.question.options.isNotEmpty()) {
-                Spacer(Modifier.height(6.dp))
-                result.question.options.forEach { option ->
-                    Text(
-                        text = option,
-                        fontSize = 12.sp,
-                        color = Color(0xFF333333),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.padding(start = 2.dp, top = 1.dp)
-                    )
-                }
-            }
-            if (result.question.answer.isNotBlank()) {
-                Spacer(Modifier.height(6.dp))
+    val glass = LocalGlass.current
+    GlassCard(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        Text(
+            text = result.question.stem,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Medium,
+            color = glass.textPrimary,
+            maxLines = 4,
+            overflow = TextOverflow.Ellipsis
+        )
+        if (result.question.options.isNotEmpty()) {
+            Spacer(Modifier.height(6.dp))
+            result.question.options.forEach { option ->
                 Text(
-                    text = "答案：${result.question.answer}",
-                    fontSize = 13.sp,
-                    color = Green,
-                    fontWeight = FontWeight.Bold
+                    text = option,
+                    fontSize = 12.sp,
+                    color = glass.textPrimary,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(start = 2.dp, top = 1.dp)
                 )
             }
+        }
+        if (result.question.answer.isNotBlank()) {
             Spacer(Modifier.height(6.dp))
             Text(
-                text = "来源：" + result.bankName + if (result.question.source.isNotBlank()) " / " + result.question.source else "",
-                fontSize = 11.sp,
-                color = Color.Gray
-            )
-            Text(
-                text = "匹配分：${result.score}",
-                fontSize = 11.sp,
-                color = Color.Gray
+                text = "答案：${result.question.answer}",
+                fontSize = 13.sp,
+                color = glass.primary,
+                fontWeight = FontWeight.Bold
             )
         }
+        Spacer(Modifier.height(6.dp))
+        Text(
+            text = "来源：" + result.bankName + if (result.question.source.isNotBlank()) " / " + result.question.source else "",
+            fontSize = 11.sp,
+            color = glass.textSecondary
+        )
+        Text(
+            text = "匹配分：${result.score}",
+            fontSize = 11.sp,
+            color = glass.textSecondary
+        )
     }
 }
 

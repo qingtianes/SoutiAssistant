@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>搜题助手 · 完整 UI（玻璃拟态）</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{
+    font-family:-apple-system,'PingFang SC','Microsoft YaHei',sans-serif;
+    background:#0b0f14;color:#e6edf3;min-height:100vh;padding:24px 16px 60px;
+  }
+
+  /* ===== 顶部控制 ===== */
+  .topbar{max-width:880px;margin:0 auto 22px;display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;}
+  .topbar h1{font-size:18px;font-weight:700;}
+  .topbar h1 span{color:#5c6670;font-weight:400;font-size:12px;margin-left:8px;}
+  .topbar .right{display:flex;align-items:center;gap:14px;}
+  .toggle{position:relative;width:58px;height:30px;border-radius:15px;background:#2a3542;cursor:pointer;transition:.3s;border:none;display:flex;align-items:center;justify-content:space-between;padding:0 7px;box-shadow:inset 0 1px 3px rgba(0,0,0,.4);}
+  .toggle .sun,.toggle .moon{font-size:14px;line-height:1;z-index:1;}
+  .toggle .knob{position:absolute;top:3px;left:3px;width:24px;height:24px;border-radius:50%;background:#fff;transition:.3s cubic-bezier(.34,1.56,.64,1);box-shadow:0 1px 4px rgba(0,0,0,.4);}
+  .toggle.night .knob{left:31px;background:#ffd866;}
+
+  /* ===== 页面导航 ===== */
+  .nav{max-width:880px;margin:0 auto 18px;display:flex;gap:8px;flex-wrap:wrap;}
+  .nav button{padding:7px 14px;border:none;border-radius:20px;cursor:pointer;background:#161d26;color:#9aa7b3;font-size:13px;font-weight:600;transition:.2s;font-family:inherit;}
+  .nav button.active{background:#2bbd9a;color:#04342c;}
+  .nav button:hover{color:#fff;}
+
+  /* ===== 手机 ===== */
+  .phone-wrap{max-width:880px;margin:0 auto;display:flex;justify-content:center;}
+  .phone{width:350px;border-radius:36px;overflow:hidden;box-shadow:0 24px 70px rgba(0,0,0,.6),0 0 0 1px rgba(255,255,255,.07);position:relative;}
+  .screen{height:700px;overflow:hidden;display:flex;flex-direction:column;transition:background .4s,color .4s;position:relative;}
+
+  /* ===== 主题变量（玻璃拟态）===== */
+  .screen{
+    --bg1:#f3f9fc;--bg2:#e8f1f6;--bg3:#dcebf2;
+    --text:#16324a;--text-dim:rgba(22,50,74,.62);
+    --card:rgba(255,255,255,.66);--card-bd:rgba(255,255,255,.85);
+    --card-hi:rgba(255,255,255,.9);--card-sh:rgba(40,80,110,.10);
+    --primary:#1d9e75;--primary2:#2bbd9a;
+    --chipbg:rgba(255,255,255,.5);
+    --line:#3ecfcf;
+    background:linear-gradient(160deg,var(--bg1),var(--bg2) 50%,var(--bg3));
+    color:var(--text);
+  }
+  .screen.night{
+    --bg1:#123a52;--bg2:#0d1b2a;--bg3:#0a1428;
+    --text:#e8f2fb;--text-dim:rgba(232,242,251,.6);
+    --card:rgba(20,40,60,.45);--card-bd:rgba(90,160,190,.22);
+    --card-hi:rgba(255,255,255,.08);--card-sh:rgba(0,0,0,.35);
+    --primary:#34d399;--primary2:#3ecfcf;
+    --chipbg:rgba(255,255,255,.08);
+    background:radial-gradient(120% 90% at 15% 0%,#123a52 0%,#0d1b2a 55%,#0a1428 100%);
+  }
+  .screen.night2{background:radial-gradient(130% 100% at 18% 0%,#0e2f44 0%,#081422 60%,#060d18 100%);}
+
+  .glow{position:absolute;border-radius:50%;filter:blur(60px);pointer-events:none;}
+  .glow.a{top:-55px;left:-40px;width:210px;height:210px;background:rgba(62,207,207,.26);}
+  .glow.b{bottom:40px;right:-50px;width:190px;height:190px;background:rgba(29,158,117,.22);}
+
+  /* ===== 通用组件 ===== */
+  .navi{display:flex;align-items:center;padding:16px 16px 8px;position:relative;z-index:1;}
+  .back{width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(8px);background:var(--card);border:1px solid var(--card-bd);font-size:17px;margin-right:10px;}
+  .navi .ttl{font-size:18px;font-weight:800;letter-spacing:.3px;}
+  .navi .sub{font-size:11px;opacity:.6;margin-top:2px;}
+  .logo{width:38px;height:38px;border-radius:12px;margin-right:11px;display:flex;flex-direction:column;justify-content:center;gap:3px;padding:0 8px;background:linear-gradient(150deg,rgba(13,27,42,.92),rgba(18,40,62,.92));box-shadow:inset 0 1px 0 rgba(255,255,255,.25),0 4px 14px rgba(0,0,0,.3);}
+  .logo .line{height:3px;border-radius:2px;background:rgba(232,242,251,.85);}
+  .logo .line.mid{width:70%;}
+  .logo .line.opt{width:58%;height:3px;border-radius:2px;background:linear-gradient(90deg,#3ecfcf,#34d399);box-shadow:0 0 8px rgba(62,207,207,.9);}
+  .info{margin-left:auto;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;backdrop-filter:blur(8px);background:var(--card);border:1px solid var(--card-bd);font-weight:700;font-size:15px;}
+
+  .body{flex:1;overflow:auto;padding:10px 16px 24px;position:relative;z-index:1;}
+  .sec{font-size:11px;font-weight:700;letter-spacing:1px;opacity:.55;margin:14px 0 8px;}
+  .row{display:flex;gap:10px;}
+  .tile{flex:1;border-radius:18px;padding:16px 13px;cursor:pointer;position:relative;overflow:hidden;backdrop-filter:blur(16px);background:var(--card);border:1px solid var(--card-bd);box-shadow:inset 0 1px 0 var(--card-hi),0 6px 20px var(--card-sh);}
+  .tile .ic{font-size:21px;}
+  .tile .lb{font-size:13px;font-weight:700;margin-top:8px;}
+  .tile .sm{font-size:10px;opacity:.55;margin-top:2px;}
+  .card{border-radius:18px;padding:14px;margin-bottom:10px;cursor:pointer;position:relative;overflow:hidden;backdrop-filter:blur(16px);background:var(--card);border:1px solid var(--card-bd);box-shadow:inset 0 1px 0 var(--card-hi),0 6px 20px var(--card-sh);}
+  .card .head{display:flex;align-items:center;}
+  .card .ht{font-size:15px;font-weight:700;}
+  .card .dot{margin-left:auto;width:8px;height:8px;border-radius:50%;background:#ccc;}
+  .card .dot.on{background:linear-gradient(135deg,#3ecfcf,#34d399);box-shadow:0 0 10px rgba(62,207,207,.8);}
+  .card .st{font-size:11px;opacity:.6;margin-left:6px;}
+  .card .desc{font-size:12px;opacity:.6;margin-top:4px;}
+  .card .arrow{margin-left:auto;font-size:20px;opacity:.45;}
+  .btn{margin-top:12px;height:42px;border-radius:13px;border:none;cursor:pointer;font-size:14px;font-weight:700;width:100%;font-family:inherit;background:linear-gradient(135deg,var(--primary2),var(--primary));color:#fff;box-shadow:0 6px 18px rgba(29,158,117,.35);}
+  .screen.night .btn{color:#04342c;box-shadow:0 6px 18px rgba(62,207,207,.4);}
+  .chip{font-size:10px;padding:3px 9px;border-radius:20px;background:var(--chipbg);backdrop-filter:blur(8px);opacity:.7;margin-left:6px;}
+  .dim{opacity:.42;}
+  .ok{color:#34d399;font-weight:700;font-size:14px;cursor:pointer;}
+
+  /* 设置页专用 */
+  .srow{display:flex;align-items:center;padding:11px 0;border-bottom:1px solid rgba(128,150,165,.15);}
+  .srow:last-child{border-bottom:none;}
+  .srow .tt{font-size:14px;font-weight:600;}
+  .srow .ss{font-size:11px;opacity:.55;margin-top:1px;}
+  .srow .rt{margin-left:auto;font-size:12px;}
+  .fchip{font-size:12px;padding:5px 13px;border-radius:20px;background:var(--chipbg);backdrop-filter:blur(8px);cursor:pointer;font-weight:600;}
+  .fchip.on{background:linear-gradient(135deg,#3ecfcf,#34d399);color:#04342c;}
+  .switch{width:44px;height:26px;border-radius:13px;background:rgba(120,140,155,.35);position:relative;cursor:pointer;}
+  .switch.on{background:linear-gradient(135deg,#3ecfcf,#34d399);}
+  .switch .k{position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.25s;}
+  .switch.on .k{left:21px;}
+
+  /* 扫描页取景框 */
+  .cam{flex:1;position:relative;margin:0;background:#000;overflow:hidden;}
+  .vf{position:absolute;left:6%;top:30%;width:88%;height:40%;border:3px solid #00e676;border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.55);}
+  .vf::after{content:'A.';position:absolute;left:-4px;top:-30px;color:#00e676;font-weight:800;font-size:16px;text-shadow:0 0 10px rgba(0,230,118,.9);}
+  .zoom{position:absolute;right:10px;bottom:12px;display:flex;align-items:center;gap:8px;color:#fff;font-size:13px;}
+  .zoom span{width:28px;height:28px;border-radius:50%;background:rgba(0,0,0,.55);display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:17px;}
+
+  .pages{display:none;}
+</style>
+</head>
+<body>
+  <div class="topbar">
+    <h1>搜题助手 · 完整 UI<span>玻璃拟态 · 7 页全览</span></h1>
+    <div class="right">
+      <span style="font-size:12px;color:#8a97a5;">日/夜</span>
+      <button class="toggle night" id="masterToggle" onclick="toggleMaster()"><span class="sun">☀️</span><span class="moon">🌙</span><span class="knob"></span></button>
+    </div>
+  </div>
+
+  <div class="nav" id="nav">
+    <button class="active" onclick="showPage(0)">主页</button>
+    <button onclick="showPage(1)">导入</button>
+    <button onclick="showPage(2)">题库总览</button>
+    <button onclick="showPage(3)">题库详情</button>
+    <button onclick="showPage(4)">扫描</button>
+    <button onclick="showPage(5)">设置</button>
+    <button onclick="showPage(6)">使用说明</button>
+  </div>
+
+  <div class="phone-wrap"><div class="phone"><div class="screen night" id="screen">
+    <div class="glow a"></div><div class="glow b"></div>
+
+    <!-- 0 主页 -->
+    <div class="pages" id="p0" style="display:flex;flex-direction:column;flex:1;">
+      <div class="navi">
+        <div class="logo"><div class="line"></div><div class="line mid"></div><div class="line opt"></div></div>
+        <div><div class="ttl">搜题助手</div><div class="sub">浮窗 · 读屏 · 摄像头 · 本地题库</div></div>
+        <div class="info">ⓘ</div>
+      </div>
+      <div class="body">
+        <div class="sec">题库</div>
+        <div class="row">
+          <div class="tile"><div class="ic">📁</div><div class="lb">智能导入</div><div class="sm">txt / docx / pdf / xls</div></div>
+          <div class="tile"><div class="ic">📚</div><div class="lb">题库总览</div><div class="sm">已导入 3 个题库</div></div>
+        </div>
+        <div class="sec">快捷搜题</div>
+        <div class="card"><div class="head"><span class="ht">浮窗搜题</span><span class="dot on"></span><span class="st">运行中</span></div><div class="desc">绿框实时识别 · 单题答案输出</div><button class="btn">关闭服务</button></div>
+        <div class="card"><div class="head"><span class="ht">读屏搜题</span><span class="dot"></span><span class="st">未开启</span></div><div class="desc">全屏识别 · 多题答案输出</div></div>
+        <div class="card"><div class="head"><span class="ht">扫描搜题</span><span class="arrow">›</span></div><div class="desc">摄像头实时扫描 · 取景框识别</div></div>
+        <div class="card dim"><div class="head"><span class="ht">AI 搜题</span><span class="chip">待开发</span></div><div class="desc">在线大模型搜题</div></div>
+        <div class="sec">设置</div>
+        <div class="card"><div class="head"><span class="ht">设置</span><span class="arrow">›</span></div><div class="desc">权限 / 识别匹配 / 浮窗显示 / 扫描 / 关于</div></div>
+      </div>
+    </div>
+
+    <!-- 1 导入 -->
+    <div class="pages" id="p1">
+      <div class="navi"><div class="back">‹</div><div class="ttl">手动导入</div></div>
+      <div class="body">
+        <div class="card" style="background:rgba(120,80,180,.12);border:1px solid rgba(150,110,220,.25);">
+          <div class="ht" style="color:#9a6bdd;">支持的格式</div>
+          <div class="desc" style="margin-top:8px;line-height:1.7;">✅ .txt / .docx / .pdf（文字版） / .xls<br>✅ 三种排版都识别：有序号 / 无序号空行分隔 / 无序号选项对齐<br>❌ 扫描版 PDF（无文本层）无法导入</div>
+        </div>
+        <button class="btn">选择文件导入（txt/docx/pdf/xls）</button>
+      </div>
+    </div>
+
+    <!-- 2 题库总览 -->
+    <div class="pages" id="p2">
+      <div class="navi"><div class="back">‹</div><div class="ttl">题库总览</div><div class="ok" style="margin-left:auto;">确认(2)</div></div>
+      <div class="body">
+        <div class="row" style="gap:6px;margin-bottom:10px;">
+          <div class="fchip on">手动导入</div><div class="fchip">AI 导入</div>
+        </div>
+        <div class="card" style="background:rgba(255,150,40,.1);border:1px solid rgba(255,150,40,.25);">
+          <div class="desc" style="opacity:.85;">勾选需要搜题的题库 → 点右上角「确认」→ 启动浮窗后只搜这些题库</div>
+        </div>
+        <div class="card"><div class="head"><span style="font-size:15px;">☑️</span><span class="ht" style="margin-left:8px;">sbs_bank</span><span class="chip">已勾选</span></div><div class="desc">题目数：120 · 导入时间：08-16</div><div class="row" style="justify-content:flex-end;gap:4px;"><span class="ok" style="font-size:12px;">分享</span><span style="color:#ff7a7a;font-size:12px;">删除</span></div></div>
+        <div class="card"><div class="head"><span style="font-size:15px;">☑️</span><span class="ht" style="margin-left:8px;">化工安全</span><span class="chip">已勾选</span></div><div class="desc">题目数：80 · 导入时间：08-15</div><div class="row" style="justify-content:flex-end;gap:4px;"><span class="ok" style="font-size:12px;">分享</span><span style="color:#ff7a7a;font-size:12px;">删除</span></div></div>
+        <div class="card dim"><div class="head"><span style="font-size:15px;">⬜</span><span class="ht" style="margin-left:8px;">机械原理</span></div><div class="desc">题目数：45 · 导入时间：08-14</div><div class="row" style="justify-content:flex-end;gap:4px;"><span class="ok" style="font-size:12px;">分享</span><span style="color:#ff7a7a;font-size:12px;">删除</span></div></div>
+      </div>
+    </div>
+
+    <!-- 3 题库详情 -->
+    <div class="pages" id="p3">
+      <div class="navi"><div class="back">‹</div><div><div class="ttl">sbs_bank</div><div class="sub">120 题</div></div></div>
+      <div class="body">
+        <div class="card"><div class="ht" style="font-size:14px;">四氢呋喃的爆炸体积分数极限范围是（　）</div><div class="desc" style="margin-top:6px;">A. 0.5%-10.5%<br>B. 1.0%-9.8%<br>C. 2.0%-10.8%<br>D. 2.3%-11.8%</div><div class="ok" style="margin-top:6px;">答案：D</div></div>
+        <div class="card"><div class="ht" style="font-size:14px;">SBS聚合反应过程中，单体水含量控制在（　）以下</div><div class="desc" style="margin-top:6px;">A. 20ppm<br>B. 10ppm<br>C. 30ppm<br>D. 40ppm</div><div class="ok" style="margin-top:6px;">答案：B</div></div>
+        <div class="card"><div class="ht" style="font-size:14px;">在液体输送机械中应用最广的是（　）</div><div class="desc" style="margin-top:6px;">A. 齿轮泵<br>B. 离心泵<br>C. 往复泵<br>D. 螺杆泵</div><div class="ok" style="margin-top:6px;">答案：B</div></div>
+      </div>
+    </div>
+
+    <!-- 4 扫描 -->
+    <div class="pages" id="p4" style="display:flex;flex-direction:column;flex:1;">
+      <div class="navi"><div class="back">‹</div><div class="ttl">扫描搜题</div><div class="sub" style="margin-left:8px;">识别中</div></div>
+      <div class="cam">
+        <div class="vf"></div>
+        <div class="zoom"><span>−</span>1.0x<span>+</span></div>
+      </div>
+      <div class="body" style="flex:0 0 auto;">
+        <div class="card"><div class="head"><span class="ht" style="font-size:14px;">四氢呋喃的爆炸体积分数极限范围是</span></div><div class="desc" style="margin-top:4px;">A.0.5%-10.5% B.1.0%-9.8% C.2.0%-10.8% D.2.3%-11.8%</div><div class="ok" style="margin-top:4px;">答案：D · 匹配分 10</div></div>
+        <div class="card dim"><div class="head"><span class="ht" style="font-size:14px;">SBS聚合反应单体水含量</span></div><div class="desc" style="margin-top:4px;">A.20ppm B.10ppm C.30ppm D.40ppm</div><div class="ok" style="margin-top:4px;">答案：B · 匹配分 9</div></div>
+      </div>
+    </div>
+
+    <!-- 5 设置 -->
+    <div class="pages" id="p5">
+      <div class="navi"><div class="back">‹</div><div class="ttl">设置</div></div>
+      <div class="body">
+        <div class="sec">权限管理</div>
+        <div class="card"><div class="srow"><div><div class="tt">悬浮窗权限</div></div><div class="rt ok">已授权</div></div><div class="srow"><div><div class="tt">摄像头权限</div></div><div class="rt ok">已授权</div></div><div class="srow"><div><div class="tt">通知权限</div></div><div class="rt ok">已授权</div></div><div class="srow"><div><div class="tt">录屏权限</div></div><div class="rt ok">已授权</div></div></div>
+        <div class="sec">识别与匹配</div>
+        <div class="card"><div class="srow"><div class="tt">最多显示结果</div><div class="rt" style="display:flex;gap:6px;"><div class="fchip on">1</div><div class="fchip">3</div><div class="fchip">5</div><div class="fchip">10</div></div></div><div class="srow"><div class="tt">最低匹配分</div><div class="rt ok">60 分</div></div><div class="srow"><div class="tt">识别速度</div><div class="rt" style="display:flex;gap:6px;"><div class="fchip">快</div><div class="fchip on">标准</div><div class="fchip">省电</div></div></div></div>
+        <div class="sec">浮窗显示</div>
+        <div class="card"><div class="srow"><div class="tt">结果字号</div><div class="rt" style="display:flex;gap:6px;"><div class="fchip">小</div><div class="fchip on">中</div><div class="fchip">大</div></div></div><div class="srow"><div><div class="tt">显示匹配分与来源</div><div class="ss">关闭后只显示题干和答案</div></div><div class="rt"><div class="switch on"><div class="k"></div></div></div></div><div class="srow"><div class="tt">绿框默认大小</div><div class="rt" style="display:flex;gap:6px;"><div class="fchip">小</div><div class="fchip on">中</div><div class="fchip">大</div></div></div></div>
+        <div class="sec">扫描搜题</div>
+        <div class="card"><div class="srow"><div class="tt">默认缩放倍数</div><div class="rt" style="display:flex;gap:6px;"><div class="fchip on">1.0x</div><div class="fchip">1.5x</div><div class="fchip">2.0x</div></div></div><div class="srow"><div class="tt">取景框高度</div><div class="rt" style="display:flex;gap:6px;"><div class="fchip on">单行</div><div class="fchip">双行</div></div></div></div>
+        <div class="sec">通用 / 关于</div>
+        <div class="card"><div class="srow"><div class="tt">当前版本</div><div class="rt" style="opacity:.6;">1.0.2</div></div><div class="srow"><div class="tt">更新日志</div><div class="rt" style="opacity:.6;">›</div></div><div class="srow"><div><div class="tt">隐私说明</div><div class="ss">OCR 完全本机处理，不上传</div></div><div class="rt" style="opacity:.6;">›</div></div><div class="srow"><div class="tt" style="color:#ff7a7a;">清空本地题库与设置</div></div></div>
+      </div>
+    </div>
+
+    <!-- 6 使用说明 -->
+    <div class="pages" id="p6">
+      <div class="navi"><div class="back">‹</div><div class="ttl">使用说明</div></div>
+      <div class="body">
+        <div class="card"><div class="ht" style="font-size:15px;">1. 题库导入</div><div class="desc" style="margin-top:6px;line-height:1.8;">首页「题库」→「智能导入」，选择 txt / docx / pdf / xls 文件。<br>导入后进入「题库总览」，勾选要参与搜题的题库。</div></div>
+        <div class="card"><div class="ht" style="font-size:15px;">2. 浮窗搜题</div><div class="desc" style="margin-top:6px;line-height:1.8;">点「浮窗搜题」授权悬浮窗和录屏。<br>屏幕出现绿色识别框，拖动/缩放到题目上。<br>答案显示在独立输出窗，标题栏可拖动、可最小化。</div></div>
+        <div class="card"><div class="ht" style="font-size:15px;">3. 读屏搜题</div><div class="desc" style="margin-top:6px;line-height:1.8;">点「读屏搜题」，自动全屏识别，答案按顺序显示在右上角小窗，可拖动/缩放，✕ 关闭。</div></div>
+        <div class="card"><div class="ht" style="font-size:15px;">4. 扫描搜题</div><div class="desc" style="margin-top:6px;line-height:1.8;">点「扫描搜题」授权摄像头，把题目对准绿色取景框。<br>双指或 +/− 缩放；下方显示答案；可暂停/继续。</div></div>
+        <div class="card"><div class="ht" style="font-size:15px;">5. 设置</div><div class="desc" style="margin-top:6px;line-height:1.8;">首页「设置」可管理权限、识别与匹配、浮窗显示、扫描搜题等。</div></div>
+      </div>
+    </div>
+
+  </div></div></div>
+
+<script>
+  let cur = 0;
+  function showPage(i){
+    cur = i;
+    document.querySelectorAll('.pages').forEach(p=>p.style.display='none');
+    const el = document.getElementById('p'+i);
+    if(i===0||i===4){el.style.display='flex';el.style.flexDirection='column';el.style.flex='1';}
+    else el.style.display='block';
+    document.querySelectorAll('#nav button').forEach((b,j)=>b.classList.toggle('active',j===i));
+  }
+  function toggleMaster(){
+    const s=document.getElementById('screen');
+    const t=document.getElementById('masterToggle');
+    const night=s.classList.toggle('night');
+    t.classList.toggle('night',night);
+  }
+  showPage(0);
+</script>
+</body>
+</html>
