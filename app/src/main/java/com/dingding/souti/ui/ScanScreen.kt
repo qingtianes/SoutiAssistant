@@ -31,6 +31,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.Icon
@@ -44,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -91,7 +93,7 @@ fun ScanScreen(onBack: () -> Unit) {
 
     val previewView = remember {
         PreviewView(context).apply {
-            scaleType = PreviewView.ScaleType.FILL_CENTER
+            scaleType = PreviewView.ScaleType.FIT_CENTER
         }
     }
 
@@ -158,11 +160,14 @@ fun ScanScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .weight(1f)
                     .background(Color.Black)
+                    .clip(RoundedCornerShape(8.dp))
             ) {
                 if (hasCameraPermission) {
                     AndroidView(
                         factory = { previewView },
-                        modifier = Modifier.fillMaxSize()
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(8.dp))
                     )
                 } else {
                     Column(
@@ -198,12 +203,18 @@ fun ScanScreen(onBack: () -> Unit) {
                     .padding(horizontal = 16.dp)
             ) {
                 Spacer(Modifier.height(8.dp))
-                Text(
-                    text = "匹配答案",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color.Gray
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "匹配答案",
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.Gray
+                    )
+                    Spacer(Modifier.weight(1f))
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Filled.Close, "关闭")
+                    }
+                }
                 Spacer(Modifier.height(6.dp))
 
                 if (results.isEmpty()) {
