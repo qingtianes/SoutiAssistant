@@ -1,185 +1,64 @@
 # 搜题助手（Souti Assistant）
 
-> 基于 OCR 的题库搜题工具 — 浮窗实时扫描题目，自动匹配本地题库，秒出答案
+> 基于 OCR 的题库搜题工具：浮窗实时识别框内题目、读屏全屏多题识别，匹配本地题库后输出答案。
 
-**当前版本**: `v0.7-screen-read-stable`（读屏搜题多题模式稳定 · 2026-08-14） — 读屏搜题全屏 OCR 多题识别，按"答案："锚点切分 + 去括号匹配 + 不吞题原则
+## 当前版本
 
-## 📌 功能
+- **功能版本**：`v0.7-screen-read-stable`
+- **重构版本**：结构拆分，不改变功能行为
+- **当前分支**：`main`（接管工作已合并）
+
+## 功能
 
 | 功能 | 说明 | 状态 |
 |---|---|---|
-| 🖥️ 浮窗搜题 | 悬浮窗 + 绿框识别区，实时 OCR 扫描题目 | ✅ 完成 |
-| 📷 OCR 识别 | MediaProjection 截屏 + ML Kit 中文识别（Hani_ctc 离线模型） | ✅ 完成 |
-| 📚 题库管理 | 手动导入 .txt 题库（题干 + ABCD 选项 + 答案） | ✅ 完成 |
-| 🔍 智能匹配 | LCS 最长公共子串算法，OCR 截短也能命中 | ✅ 完成 |
-| ⏸ 扫描暂停/恢复 | 暂停扫描保留 MediaProjection，一键恢复 | ✅ 完成 |
-| — 老板键 | 浮窗一键缩成 28dp 红 **+**（可拖动，无绿圈） | ✅ 完成 |
-| 📱 读屏搜题 | 全屏自动识别 + 滚动防抖 + 多题切分 + 独立答案小窗 | ✅ 完成（v0.7） |
-| 🤖 AI 搜题 | 在线大模型搜题 | 🚧 待开发 |
+| 浮窗搜题 | 悬浮窗绿框实时 OCR 框内题目，输出单题答案 | 完成 |
+| 读屏搜题 | 全屏实时 OCR，多题按顺序输出到独立小窗 | 完成 |
+| 扫描搜题 | 摄像头扫描题目出答案 | 待开发 |
+| 题库导入 | `.txt / .docx / .pdf / .xls`，统一解析题干、选项、答案 | 完成 |
+| 智能匹配 | LCS 最长公共子串 + 完全包含打分 | 完成 |
+| 悬浮窗 | 可拖拽、缩放、最小化老板键 | 完成 |
 
-## 🛠️ 技术栈
+## 技术栈
 
-- **语言**: Kotlin
-- **UI**: Jetpack Compose（主页）+ 传统 View（浮窗服务，性能优先）
-- **OCR**: Google ML Kit（`com.google.mlkit:text-recognition-chinese`）
-- **截屏**: MediaProjection + VirtualDisplay + ImageReader
-- **存储**: SharedPreferences（JSON 序列化题库）
-- **最低版本**: Android 13（API 33，targetSdk 33 规避 Android 14+ MEDIA_PROJECTION runtime 检查）
+- Kotlin + Jetpack Compose（主页）+ 传统 View（悬浮窗）
+- Google ML Kit 中文 OCR
+- MediaProjection + VirtualDisplay + ImageReader
+- SharedPreferences（JSON 题库）
+- Android 13+（targetSdk 33）
 
-## 📁 项目结构
+## 项目结构
 
-```
-E:\SoutiAssistant\
-├── app/src/main/java/com/dingding/souti/
-│   ├── MainActivity.kt        # 主页（浮窗控制、题库管理入口、设置）
-│   ├── FloatWindowService.kt  # 浮窗服务（OCR 扫描 + 搜题 + 结果展示，~1500行核心代码）
-│   ├── OcrBridge.kt           # MediaProjection 单例桥（跨组件共享）
-│   ├── OcrHelper.kt           # OCR 辅助（授权流程）
-│   ├── QuestionBank.kt        # 题库管理器（导入/搜索/LCS 匹配）
-│   └── ui/                    # Compose UI 组件
-├── tools/convert_bank.py      # 电脑端题库转换工具（txt/docx/pdf/xls → app 导入格式）
-└── ...
+```text
+app/src/main/java/com/dingding/souti/
+├── model/       Bank、Question、SearchResult
+├── repository/  QuestionBank、QuestionRepository、QuestionMatcher
+├── import/      Importer、FileFormatDetector、BankChunker、Txt/Docx/Pdf/Xls 解析器
+├── ocr/         OcrBridge、OcrHelper、OcrQuestionProcessor
+├── overlay/     FloatWindowService 及拆出的 8 个组件
+└── ui/          MainActivity、HomeScreen、ImportScreen、BankScreens
 ```
 
-## 🪟 浮窗 4 模块结构（v0.5 重构）
+## FloatWindowService 已拆组件
 
-浮窗布局从上到下严格 4 个模块，**每层都裁剪（clipChildren=true），模块 4 滑动永不侵入 1/2/3**：
+- `FrameImageUtils`：帧差异、亮度、反色
+- `OverlayResultRenderer`：结果卡片渲染
+- `ServiceNotificationHelper`：前台通知
+- `OverlayDragResizer`：读屏小窗拖拽/缩放
+- `ProjectionVirtualDisplayFactory`：VirtualDisplay + ImageReader 创建
+- `SearchUiBuilder`：搜题界面
+- `ScreenReadWindowBuilder`：读屏小窗
+- `StandbyUiBuilder`：待机主界面
 
-```
-┌─────────────────────────────────────────┐
-│ ① 顶栏 (28dp) — ●扫描 🔍 ⏸暂停 — │  ← 模块1：状态+控制
-├─────────────────────────────────────────┤
-│                                         │
-│ ② 绿框扫描区域 (150dp，可resize 20-400dp) │  ← 模块2：OCR 截屏
-│     [绿框对准题目即可]                  │
-│                                         │
-├─────────────────────────────────────────┤
-│ ③ [OCR 识别] xxx...        │  ← 模块3：实时显示识别到的原文
-├─────────────────────────────────────────┤
-│ ④ 匹配结果区 (60-180dp 动态)  │  ← 模块4：题库匹配卡片（可滚动）
-│     ┌─ 卡片1：四氢呋喃...     │     没匹配时缩到 60dp 省屏
-│     │  A. 0.5%-10.5%           │
-│     │  答案：D               │
-│     ├─ 卡片2...               │
-└─────────────────────────────────────────┘
-```
+## 构建与验证
 
-### 设计决策
-- **裁剪严格隔离**：root / outer / container / ScrollView / resultContainer 五层全部 `clipChildren=true`，**模块 4 永不绘制出自己区域**
-- **浮窗总高公式**：`topBar(28) + topSpace(0) + 绿框 + 模块3 + ScrollView(60-180)`，**自洽不溢出**
-- **省屏**：模块 3 无内容时隐藏（高度 0）；模块 4 没匹配缩到 60dp
-- **老板键**（v0.5 重写）：不再显示绿圈 +，改为 28dp 红 **+**（与 — 颜色一致），背景完全透明，可拖动，初始位置 = — 消失的地方
+- 构建前设置 `JAVA_HOME` 到 JDK 21（本机：`E:\Huawei\DevEco Studio\jbr`）
+- 回归命令：`gradlew.bat testDebugUnitTest lintDebug assembleDebug --no-daemon`
+- 当前：40 项单元测试通过，Lint 0 error，可打包 debug APK
 
-## 🚀 使用说明
+## 版本历史
 
-### 1. 启动服务
-主页 → 点击「启动服务」→ 浮窗出现在屏幕上方
-
-### 2. 授权 + 开始扫描
-- 首次使用点浮窗的 **🔓授权并扫描** → 系统弹窗允许录屏 → 自动开始扫描
-- 浮窗按钮三态：`🔓授权并扫描` → `⏸暂停` → `▶继续`
-
-### 3. 调节识别框
-- 拖动浮窗任意位置移动
-- 拖右下角 **◢** 对角线调整绿框大小（宽 100-720dp，高 20-400dp）
-- 绿框对准题目 → OCR 自动识别 → 结果区显示匹配答案
-
-### 4. 老板键
-- 点顶栏 **—** → 浮窗缩成 28dp 红 **+**（位置在 — 消失处，可拖动，背景透明）
-- 点 **+** → 恢复完整浮窗
-
-### 5. 关闭服务
-主页 → 点击「关闭服务（需重新授权）」→ 完全停止（下次需重新授权）
-
-### 6. 读屏搜题（v0.6 新增 / v0.7 稳定）
-首页 → 读屏搜题 → 授权后**全屏自动识别**，无需任何操作：
-- **无感识别**：全屏截屏 + 滚动防抖（滚动中冻结输出，静止后自动刷新）
-- **单题/多题自动分流**：能切分出 ≥2 题 → 多题列表；否则单题整段匹配
-- **多题切分锚点**：按"答案：X"切分（题号小字 OCR 不稳定，答案锚点更可靠）
-- **题干提取**：截取选项前 → 去括号 → 去"开头到《...》"前缀（通用，适配各种管理规定写法）
-- **不吞题原则**：宁可重复显示，也不漏题（读屏无手动兜底，考试禁切应用）
-- **独立答案小窗**：半透明深底、右下角默认（不挡题）、可拖动（标题栏）/缩放（◢）/最小化（📖圆点）/关闭（✕）
-- 读屏搜题与浮窗搜题**共享 MediaProjection 授权**，两者互不冲突
-
-### 7. 导入题库
-主页 → 题库管理 → 手动导入 → 选 .txt 文件
-
-**支持源格式**（`tools/convert_bank.py` 自动转换 / APP 内 AI 导入直接解析）：
-- `.xls` 旧版 Excel（列式：题型/题干/可选项/答案）
-- `.docx` Word（整块切块：题干+选项+答案原样保留，不拆字段）
-- `.txt` 纯文本（三种排版都可识别）
-- `.pdf` **仅限文字版**（有文本层，提取后切块；扫描版/图片版 PDF 无法导入）
-
-**题库格式（txt 三种兼容）**：
-```
-# 格式1：有序号（数字.开头切块）+ 空行分隔
-1. 题干文字（）
-A. 选项一
-B. 选项二
-答案:C
-
-（空行分隔下一题）
-
-# 格式2：无序号 + 空行分隔（空行 = 题目边界）
-题干文字（）
-A. 选项一
-B. 选项二
-
-（空行分隔下一题）
-
-# 格式3：无序号 + 选项对齐（看到 A. 开头 → 前一行是题干）
-题干文字（）
-A. 选项一
-B. 选项二
-```
-
-**⚠️ 无法导入的情况**（导入时提示）：
-- 扫描版 PDF（无文本层，无法提取文字）
-- 无序号 + 无空行 + 纯文本流（无法可靠切块，提示人工修改后重试）
-
-## ⚙️ 调试
-
-主页 → 设置 →「显示 OCR 识别范围」→ 开启后浮窗显示红色边框（OCR 实际截屏范围）
-
-## 🏗️ 构建说明
-
-⚠️ **必须用 Android Studio 编译**，命令行编译会卡在 `gradle-fileevents.dll` 崩溃（JVM + 本机 MinGW 库兼容问题）。
-
-Studio 步骤：
-1. Open `E:\SoutiAssistant`
-2. 同步 Gradle（首次需要几分钟）
-3. Run → app → 选模拟器/真机
-
-### 模拟器环境要求
-
-⚠️ **OCR 功能（浮窗搜题 + 读屏搜题）需要带 Google Play Services 的镜像**：
-
-| 镜像类型 | 浮窗搜题 | 读屏搜题 | 备注 |
-|---|---|---|---|
-| Android Studio 默认镜像（无 GMS） | ❌ OCR 报 "Failed to run text recognizer" | ❌ 同左 | ML Kit 中文模型无法 lazy 下载 |
-| **带 Google Play 的镜像**（推荐）| ✅ 正常 OCR | ✅ 正常 OCR | Studio 创建模拟器时勾选 "Google Play" |
-| 真机（华为/小米等国产机） | ⚠️ 需要装 Google Play 服务 | ⚠️ 同左 | 部分国产 ROM 无 GMS 会失败 |
-
-创建模拟器时：在 AVD Manager → New Virtual Device → 选镜像时**优先选带 "Google Play" 标识的镜像**（如 Pixel 6 Pro API 34 + Google Play），不要选纯 AOSP 镜像。
-
-## 📝 相关文档
-
-- [开发笔记](开发笔记.md) — 技术方案全链路
-- [踩坑记录](踩坑记录.md) — 开发过程中的坑与解法
-
-## 📜 版本历史
-
-- **v0.7-screen-read-stable**（2026-08-14）— 读屏搜题多题模式稳定：OCR 独立资源、答案锚点切分、去括号匹配、通用前缀去除、不吞题原则、小窗可拖动/缩放/最小化
-- **v0.6-screen-read**（2026-08-09）— 读屏搜题：全屏自动识别 + 滚动防抖 + 单题/多题自动分流 + 独立答案小窗（半透明/可拖动/缩放/最小化）
-- **v0.5-floatwindow-modules**（2026-08-06）— 浮窗重构：4 模块结构独立，模块 3 OCR 状态独立显示，老板键重写，浮窗总高自适应
-- v0.4-floatwindow-refactor — 浮窗布局初步重构（之前版本）
-
-## 🧩 接管重构（分支 codex/takeover-20260815）
-
-- 包结构已整理：`model` / `repository` / `import` / `ocr` / `overlay` / `ui`
-- 纯逻辑组件：`OcrQuestionProcessor`、`QuestionMatcher`、`QuestionRepository`
-- 导入组件：`BankChunker`、`FileFormatDetector`、`Txt/Docx/Pdf/Xls` 解析器
-- `FloatWindowService` 已拆出 8 个组件：`FrameImageUtils`、`OverlayResultRenderer`、`ServiceNotificationHelper`、`OverlayDragResizer`、`ProjectionVirtualDisplayFactory`、`SearchUiBuilder`、`ScreenReadWindowBuilder`、`StandbyUiBuilder`
-- `MainActivity` 已拆出：`HomeScreen`、`ImportScreen`、`BankScreens`
-- 已加浮窗/读屏互斥守卫
-- 测试：40 项通过；Lint 0 error；构建需 JDK 21（本机 `E:\Huawei\DevEco Studio\jbr`）
+- `v0.7-screen-read-stable`：读屏搜题多题模式稳定
+- `v0.6`：版本号与文档同步
+- `v0.5`：浮窗 4 模块结构重构、老板键
+- 接管重构：包结构拆分，功能行为不变，补充测试与文档
