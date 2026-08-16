@@ -58,6 +58,12 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3")
     debugImplementation("androidx.compose.ui:ui-tooling")
+    // CameraX 实时摄像头预览与分析
+    val cameraxVersion = "1.4.1"
+    implementation("androidx.camera:camera-core:$cameraxVersion")
+    implementation("androidx.camera:camera-camera2:$cameraxVersion")
+    implementation("androidx.camera:camera-lifecycle:$cameraxVersion")
+    implementation("androidx.camera:camera-view:$cameraxVersion")
     // ML Kit 中文 OCR（离线免费，阿里云镜像有此包）
     implementation("com.google.mlkit:text-recognition-chinese:16.0.1")
     // PDF 文本提取（PDFBox 安卓移植版，仅文字版 PDF）

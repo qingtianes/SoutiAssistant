@@ -53,6 +53,7 @@ fun App() {
             "import" -> ImportScreen(onBack = { screen = "home" })
             "overview" -> OverviewScreen(onBack = { screen = "home" }, onOpenBank = { id -> openBankId = id; screen = "bank" })
             "bank" -> openBankId?.let { BankDetailScreen(bankId = it, onBack = { screen = "overview" }) }
+            "scan" -> ScanScreen(onBack = { screen = "home" })
         }
     }
 }
@@ -180,7 +181,7 @@ Button(
                 ).show()
             }
         }
-        MenuCard("扫描搜题", "摄像头实时扫描出题（待开发）") {}
+        MenuCard("扫描搜题", "摄像头实时扫描出题") { onNavigate("scan") }
         MenuCard("AI 搜题", "在线大模型搜题（待开发）") {}
         Spacer(Modifier.height(16.dp))
         SectionTitle("题库管理")
