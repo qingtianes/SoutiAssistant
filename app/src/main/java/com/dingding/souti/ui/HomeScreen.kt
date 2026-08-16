@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -54,8 +55,8 @@ fun App() {
             "overview" -> OverviewScreen(onBack = { screen = "home" }, onOpenBank = { id -> openBankId = id; screen = "bank" })
             "bank" -> openBankId?.let { BankDetailScreen(bankId = it, onBack = { screen = "overview" }) }
             "scan" -> ScanScreen(onBack = { screen = "home" })
-            "settings" -> SettingsScreen(onBack = { screen = "home" }, onOpenGuide = { screen = "help" })
-            "help" -> UsageGuideScreen(onBack = { screen = "settings" })
+            "settings" -> SettingsScreen(onBack = { screen = "home" })
+            "help" -> UsageGuideScreen(onBack = { screen = "home" })
         }
     }
 }
@@ -107,9 +108,21 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7)).verticalScroll(rememberScrollState()).statusBarsPadding().padding(16.dp)) {
-        Text("搜题助手", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
-        Text("浮窗 · 读屏 · 摄像头 · 本地题库", fontSize = 13.sp, color = Color.Gray)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("搜题助手", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
+                Text("浮窗 · 读屏 · 摄像头 · 本地题库", fontSize = 13.sp, color = Color.Gray)
+            }
+            IconButton(onClick = { onNavigate("help") }, modifier = Modifier.size(40.dp).background(Green, CircleShape)) {
+                Icon(Icons.Filled.Info, contentDescription = "使用说明", tint = Color.White)
+            }
+        }
         Spacer(Modifier.height(20.dp))
+        SectionTitle("题库")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            BankIcon("📁", "智能导入", enabled = true) { onNavigate("import") }
+            BankIcon("📚", "题库总览", enabled = true) { onNavigate("overview") }
+        }
         SectionTitle("快捷搜题")
         Card(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), shape = RoundedCornerShape(18.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
@@ -201,12 +214,6 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
                 Spacer(Modifier.weight(1f))
                 Text("待开发", fontSize = 12.sp, color = Color(0xFFBBBBBB))
             }
-        }
-        Spacer(Modifier.height(14.dp))
-        SectionTitle("题库")
-        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            BankIcon("📁", "智能导入", enabled = true) { onNavigate("import") }
-            BankIcon("📚", "题库总览", enabled = true) { onNavigate("overview") }
         }
         Spacer(Modifier.height(14.dp))
         SectionTitle("设置")
