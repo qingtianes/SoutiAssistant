@@ -1486,11 +1486,17 @@ class FloatWindowService : Service() {
             updateFloatHeightAfterRender()
             return
         }
-        // 只显示相关度最高的最佳答案，并按其真实内容高度调整输出框
+        // 渲染全部匹配结果；可视高度由 updateFloatHeightAfterRender 按最佳答案决定，其余可滚动查看
         ocrResultScroll?.visibility = View.VISIBLE
         resultContainer.visibility = View.VISIBLE
-        resultContainer.addView(OverlayResultRenderer.buildScanCard(this, results.first(), 0))
+        val ordered = if (outputDown) results.withIndex().toList() else results.withIndex().toList().reversed()
+        ordered.forEach { (idx, sr) ->
+            resultContainer.addView(OverlayResultRenderer.buildScanCard(this, sr, idx))
+        }
         updateFloatHeightAfterRender()
+        if (!outputDown) {
+            ocrResultScroll?.post { ocrResultScroll?.fullScroll(View.FOCUS_DOWN) }
+        }
     }
 
     /**
@@ -1498,6 +1504,18 @@ class FloatWindowService : Service() {
      * 同时调 WindowManager 浮窗总高 = topBar(30) + topSpace(36) + 绿框 + 输出框
      * → 没/少内容时浮窗缩到最小省屏，多内容时 180dp 上限 + 内部滚动
      */
+    private fun applyFloatWindowHeight(newHeight: Int) {
+        val p = params ?: return
+        if (p.height == newHeight) return
+        val oldHeight = p.height
+        p.height = newHeight
+        if (!outputDown) {
+            // 向上显示：底部固定，顶部向上伸缩，1/2/3 不漂移
+            p.y = (p.y + oldHeight - newHeight).coerceAtLeast(0)
+        }
+        root?.let { windowManager.updateViewLayout(it, p) }
+    }
+
     private fun updateFloatHeightAfterRender() {
         val ocrScroll = ocrResultScroll ?: return
         val contentRoot = root ?: return
@@ -1510,8 +1528,13 @@ class FloatWindowService : Service() {
             if (ocrScroll.visibility != View.VISIBLE) {
                 resultH = 0
             } else {
-                val contentH = if (container.height > 0) container.height else container.measuredHeight
-                resultH = contentH.coerceAtLeast(0)
+                val firstCard = container.getChildAt(0)
+                val bestCardH = if (firstCard != null) {
+                    maxOf(firstCard.height, firstCard.measuredHeight) + ((firstCard.layoutParams as? LinearLayout.LayoutParams)?.bottomMargin ?: 0)
+                } else {
+                    0
+                }
+                resultH = bestCardH.coerceAtLeast(0)
             }
             val olp = ocrScroll.layoutParams as? LinearLayout.LayoutParams ?: return@post
             if (olp.height != resultH) {
@@ -1519,15 +1542,7 @@ class FloatWindowService : Service() {
                 ocrScroll.layoutParams = olp
             }
             val newHeight = dp(28) + greenH + ocrStatusH + resultH
-            if (p.height != newHeight) {
-                val oldHeight = p.height
-                p.height = newHeight
-                if (!outputDown) {
-                    // 向上显示：输出框在顶部，保持底部识别框位置稳定
-                    p.y = (p.y + oldHeight - newHeight).coerceAtLeast(0)
-                }
-                windowManager.updateViewLayout(contentRoot, p)
-            }
+            applyFloatWindowHeight(newHeight)
         }
     }
 
@@ -1644,13 +1659,11 @@ class FloatWindowService : Service() {
                     val targetH = dp(28) + newH + ocrStatusH + currentResultH
                     val targetW = maxOf(dp(360), newW + dp(8))
                     if (p.height != targetH || p.width != targetW) {
-                        val oldHeight = p.height
-                        p.height = targetH
-                        p.width = targetW
-                        if (!outputDown) {
-                            p.y = (p.y + oldHeight - targetH).coerceAtLeast(0)
+                        applyFloatWindowHeight(targetH)
+                        if (p.width != targetW) {
+                            p.width = targetW
+                            windowManager.updateViewLayout(root, p)
                         }
-                        windowManager.updateViewLayout(root, p)
                     }
                     true
                 }
