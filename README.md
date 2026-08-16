@@ -173,3 +173,13 @@ Studio 步骤：
 - **v0.6-screen-read**（2026-08-09）— 读屏搜题：全屏自动识别 + 滚动防抖 + 单题/多题自动分流 + 独立答案小窗（半透明/可拖动/缩放/最小化）
 - **v0.5-floatwindow-modules**（2026-08-06）— 浮窗重构：4 模块结构独立，模块 3 OCR 状态独立显示，老板键重写，浮窗总高自适应
 - v0.4-floatwindow-refactor — 浮窗布局初步重构（之前版本）
+
+## 🧩 接管重构（分支 codex/takeover-20260815）
+
+- 包结构已整理：`model` / `repository` / `import` / `ocr` / `overlay` / `ui`
+- 纯逻辑组件：`OcrQuestionProcessor`、`QuestionMatcher`、`QuestionRepository`
+- 导入组件：`BankChunker`、`FileFormatDetector`、`Txt/Docx/Pdf/Xls` 解析器
+- `FloatWindowService` 已拆出 8 个组件：`FrameImageUtils`、`OverlayResultRenderer`、`ServiceNotificationHelper`、`OverlayDragResizer`、`ProjectionVirtualDisplayFactory`、`SearchUiBuilder`、`ScreenReadWindowBuilder`、`StandbyUiBuilder`
+- `MainActivity` 已拆出：`HomeScreen`、`ImportScreen`、`BankScreens`
+- 已加浮窗/读屏互斥守卫
+- 测试：40 项通过；Lint 0 error；构建需 JDK 21（本机 `E:\Huawei\DevEco Studio\jbr`）
