@@ -926,14 +926,9 @@ class FloatWindowService : Service() {
             val h = metrics.heightPixels
             val density = metrics.densityDpi
             try {
-                val reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
-                val vd = OcrBridge.mediaProjection!!.createVirtualDisplay(
-                    "screen_read_ocr", w, h, density,
-                    DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                    reader.surface, null, screenReadOcrHandler
-                )
-                screenReadImageReader = reader
-                screenReadVirtualDisplay = vd
+                val surface = ProjectionVirtualDisplayFactory.create(metrics, OcrBridge.mediaProjection!!, "screen_read_ocr", screenReadOcrHandler)
+                screenReadImageReader = surface.imageReader
+                screenReadVirtualDisplay = surface.virtualDisplay
                 Log.d("FloatWindow", "读屏: 创建专用 VirtualDisplay ${w}x${h}@${density}dpi")
             } catch (e: Exception) {
                 Log.e("FloatWindow", "读屏: 创建 VirtualDisplay 失败: ${e.message}", e)
@@ -1076,14 +1071,9 @@ class FloatWindowService : Service() {
         val h = metrics.heightPixels
         val density = metrics.densityDpi
         try {
-            val reader = ImageReader.newInstance(w, h, PixelFormat.RGBA_8888, 2)
-            val vd = OcrBridge.mediaProjection!!.createVirtualDisplay(
-                "ocr_scan", w, h, density,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                reader.surface, null, serviceOcrHandler
-            )
-            ocrImageReader = reader
-            ocrVirtualDisplay = vd
+            val surface = ProjectionVirtualDisplayFactory.create(metrics, OcrBridge.mediaProjection!!, "ocr_scan", serviceOcrHandler)
+            ocrImageReader = surface.imageReader
+            ocrVirtualDisplay = surface.virtualDisplay
             Log.d("FloatWindow", "ensureScanResources: 创建 ${w}x${h}@${density}dpi")
         } catch (e: Exception) {
             Log.e("FloatWindow", "ensureScanResources 失败: ${e.message}", e)
