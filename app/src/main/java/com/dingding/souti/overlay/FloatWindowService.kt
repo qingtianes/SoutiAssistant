@@ -1,6 +1,7 @@
 package com.dingding.souti.overlay
 
 import com.dingding.souti.repository.QuestionBank
+import com.dingding.souti.repository.SettingsStore
 import com.dingding.souti.model.SearchResult
 import com.dingding.souti.ocr.OcrBridge
 import com.dingding.souti.ocr.OcrQuestionProcessor
@@ -93,6 +94,12 @@ class FloatWindowService : Service() {
     private var outputTitleBarHeightPx: Int = 0
     private val bank by lazy { QuestionBank(this) }
 
+    private fun searchLimit(): Int = SettingsStore.resultLimit(this)
+
+    private fun minScore(): Float = SettingsStore.minScore(this)
+
+    private fun screenReadIntervalMs(): Long = SettingsStore.ocrThrottleMs(this)
+
     // ★★★ 读屏模式（全屏自动识别）状态 ★★★
     /** 读屏模式开关（开：全屏截屏 → 滚动防抖 → OCR → 多题匹配 → 独立答案小窗） */
     private var screenReadActive: Boolean = false
@@ -147,8 +154,9 @@ class FloatWindowService : Service() {
         super.onCreate()
         try {
             windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-            ocrRecognizeHeight = dp(150)  // 默认 150dp（约 1 道题高）
-            ocrRecognizeWidth = dp(352)  // 默认绿框宽 352dp，与 StandbyUiBuilder 保持一致
+            val (defaultFrameW, defaultFrameH) = SettingsStore.frameSizeDp(this)
+            ocrRecognizeHeight = dp(defaultFrameH)
+            ocrRecognizeWidth = dp(defaultFrameW)
             // ★ 启动成功：清空之前的错误信息（防止上次失败残留）
             getSharedPreferences("souti_state", android.content.Context.MODE_PRIVATE)
                 .edit().putBoolean("service_running", true)
@@ -539,7 +547,7 @@ class FloatWindowService : Service() {
             override fun run() {
                 if (!screenReadActive) return
                 captureScreenReadFrame()
-                scanHandler.postDelayed(this, 1500)
+                scanHandler.postDelayed(this, screenReadIntervalMs())
             }
         }
         scanHandler.post(screenReadRunnable!!)
@@ -678,7 +686,7 @@ class FloatWindowService : Service() {
             override fun run() {
                 if (!screenReadActive) return
                 captureScreenReadFrame()
-                scanHandler.postDelayed(this, 1500)
+                scanHandler.postDelayed(this, screenReadIntervalMs())
             }
         }
         scanHandler.post(screenReadRunnable!!)
@@ -793,7 +801,7 @@ class FloatWindowService : Service() {
             screenReadStatusText?.text = "🔄 截屏 diff=${(diffRatio * 100).toInt()}%"
             // 时间间隔控制 + OCR 互斥（避免异步回调 mySeq 永远被丢弃）
             val now = System.currentTimeMillis()
-            if (now - lastScreenReadTime < 1500 || screenReadOcrInProgress) {
+            if (now - lastScreenReadTime < screenReadIntervalMs() || screenReadOcrInProgress) {
                 full.recycle()
                 return
             }
@@ -1382,7 +1390,7 @@ class FloatWindowService : Service() {
                 //    通用方案：去掉"开头到第一个《...》结束"，不依赖具体前缀词（依据/根据/在/我司 等都适用）
                 //    "依据《...受限空间...》涂刷具有挥发性..." → "涂刷具有挥发性..."
                 val stem = OcrQuestionProcessor.extractScreenReadStem(seg)
-                val r = if (stem.isNotBlank()) bank.search(stem, limit = 3) else emptyList()
+                val r = if (stem.isNotBlank()) bank.search(stem, limit = searchLimit()).filter { it.score >= minScore() } else emptyList()
                 val bestScore = r.firstOrNull()?.score ?: 0
                 Log.d("FloatWindow", "多题匹配完成: candidates=${r.size}, score=$bestScore")
                 allResults.add(r)
@@ -1392,7 +1400,7 @@ class FloatWindowService : Service() {
             // ── 单题模式：整段作为查询词（无多个题号结构）──
             screenReadModeText?.text = "· 1题"
             screenReadModeText?.setTextColor(Color.parseColor("#FAC775"))  // 黄（提示只有一题候选）
-            val results = bank.search(cleaned, limit = 5)
+            val results = bank.search(cleaned, limit = searchLimit()).filter { it.score >= minScore() }
             Log.d("FloatWindow", "读屏单题匹配: ${results.size} 条")
             renderScreenReadResults(container, results, isMulti = false)
         }

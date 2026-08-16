@@ -94,6 +94,12 @@ object SettingsStore {
         prefs(ctx).edit().putString(KEY_FRAME_SIZE, value).apply()
     }
 
+    fun frameSizeDp(ctx: Context): Pair<Int, Int> = when (frameSize(ctx)) {
+        "small" -> 280 to 120
+        "large" -> 420 to 180
+        else -> 352 to 150
+    }
+    
     fun outputPosition(ctx: Context): String =
         prefs(ctx).getString(KEY_OUTPUT_POSITION, OUTPUT_POSITION_DEFAULT) ?: OUTPUT_POSITION_DEFAULT
 

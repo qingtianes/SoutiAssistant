@@ -8,10 +8,11 @@ import android.text.TextUtils
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.dingding.souti.model.SearchResult
+import com.dingding.souti.repository.SettingsStore
 
 /**
  * 结果卡片渲染器：把搜索结果画成统一的题目卡片。
- * 只负责 View 构建，不接触 Service 状态。
+ * 字号和“来源/相关度”显示由设置中心控制。
  */
 object OverlayResultRenderer {
 
@@ -19,6 +20,8 @@ object OverlayResultRenderer {
         (v * context.resources.displayMetrics.density).toInt()
 
     fun buildScreenReadMultiCard(context: Context, title: String, sr: SearchResult): LinearLayout {
+        val scale = SettingsStore.fontScaleFactor(context)
+        val showMeta = SettingsStore.showMeta(context)
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             background = GradientDrawable().apply {
@@ -33,13 +36,13 @@ object OverlayResultRenderer {
         }
         card.addView(TextView(context).apply {
             text = title
-            textSize = 10f
+            textSize = 10f * scale
             setTextColor(Color.parseColor("#1D9E75"))
             setTypeface(typeface, Typeface.BOLD)
         })
         card.addView(TextView(context).apply {
             text = sr.question.stem
-            textSize = 10f
+            textSize = 10f * scale
             setTextColor(Color.parseColor("#222222"))
             if (sr.question.options.isNotEmpty() || sr.question.answer.isNotEmpty()) {
                 maxLines = 3
@@ -49,7 +52,7 @@ object OverlayResultRenderer {
         sr.question.options.forEach { opt ->
             card.addView(TextView(context).apply {
                 text = opt
-                textSize = 10f
+                textSize = 10f * scale
                 setTextColor(Color.parseColor("#555555"))
                 setPadding(dp(context, 2), dp(context, 0), dp(context, 2), dp(context, 0))
             })
@@ -57,20 +60,24 @@ object OverlayResultRenderer {
         if (sr.question.answer.isNotBlank()) {
             card.addView(TextView(context).apply {
                 text = "✔ ${sr.question.answer}"
-                textSize = 13f
+                textSize = 13f * scale
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(Color.parseColor("#1D9E75"))
             })
         }
-        card.addView(TextView(context).apply {
-            text = "来源：${sr.bankName} · 相关度 ${sr.score}"
-            textSize = 9f
-            setTextColor(Color.parseColor("#666666"))
-        })
+        if (showMeta) {
+            card.addView(TextView(context).apply {
+                text = "来源：${sr.bankName} · 相关度 ${sr.score}"
+                textSize = 9f * scale
+                setTextColor(Color.parseColor("#666666"))
+            })
+        }
         return card
     }
 
     fun buildScreenReadSingleCard(context: Context, sr: SearchResult, idx: Int): LinearLayout {
+        val scale = SettingsStore.fontScaleFactor(context)
+        val showMeta = SettingsStore.showMeta(context)
         val isBest = idx == 0
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -86,7 +93,7 @@ object OverlayResultRenderer {
         }
         card.addView(TextView(context).apply {
             text = (if (isBest) "🎯 " else "${idx + 1}. ") + sr.question.stem
-            textSize = 11f
+            textSize = 11f * scale
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.parseColor("#222222"))
             if (sr.question.options.isNotEmpty() || sr.question.answer.isNotEmpty()) {
@@ -97,7 +104,7 @@ object OverlayResultRenderer {
         sr.question.options.forEach { opt ->
             card.addView(TextView(context).apply {
                 text = opt
-                textSize = 10f
+                textSize = 10f * scale
                 setTextColor(Color.parseColor("#555555"))
                 setPadding(dp(context, 2), dp(context, 0), dp(context, 2), dp(context, 0))
             })
@@ -105,20 +112,24 @@ object OverlayResultRenderer {
         if (sr.question.answer.isNotBlank()) {
             card.addView(TextView(context).apply {
                 text = "✔ ${sr.question.answer}"
-                textSize = 13f
+                textSize = 13f * scale
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(Color.parseColor("#1D9E75"))
             })
         }
-        card.addView(TextView(context).apply {
-            text = "来源：${sr.bankName} · 相关度 ${sr.score}"
-            textSize = 9f
-            setTextColor(Color.parseColor("#AAAAAA"))
-        })
+        if (showMeta) {
+            card.addView(TextView(context).apply {
+                text = "来源：${sr.bankName} · 相关度 ${sr.score}"
+                textSize = 9f * scale
+                setTextColor(Color.parseColor("#AAAAAA"))
+            })
+        }
         return card
     }
 
     fun buildScanCard(context: Context, sr: SearchResult, idx: Int): LinearLayout {
+        val scale = SettingsStore.fontScaleFactor(context)
+        val showMeta = SettingsStore.showMeta(context)
         val isBest = idx == 0
         val card = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -131,12 +142,10 @@ object OverlayResultRenderer {
         }
         card.addView(TextView(context).apply {
             text = (if (isBest) "🎯 " else "${idx + 1}. ") + sr.question.stem
-            textSize = 11f
+            textSize = 11f * scale
             setTypeface(typeface, Typeface.BOLD)
             setTextColor(Color.parseColor("#222222"))
-            if (sr.question.options.isEmpty() && sr.question.answer.isEmpty()) {
-                // 切块模式：整块原样显示
-            } else {
+            if (sr.question.options.isNotEmpty() || sr.question.answer.isNotEmpty()) {
                 maxLines = 2
                 ellipsize = TextUtils.TruncateAt.END
             }
@@ -144,7 +153,7 @@ object OverlayResultRenderer {
         sr.question.options.forEach { opt ->
             card.addView(TextView(context).apply {
                 text = opt
-                textSize = 10f
+                textSize = 10f * scale
                 setTextColor(Color.parseColor("#555555"))
                 layoutParams = LinearLayout.LayoutParams(
                     LinearLayout.LayoutParams.MATCH_PARENT,
@@ -158,7 +167,7 @@ object OverlayResultRenderer {
         if (sr.question.answer.isNotBlank()) {
             card.addView(TextView(context).apply {
                 text = "✔ ${sr.question.answer}"
-                textSize = 14f
+                textSize = 14f * scale
                 setTypeface(typeface, Typeface.BOLD)
                 setTextColor(Color.parseColor("#1D9E75"))
                 layoutParams = LinearLayout.LayoutParams(
@@ -167,15 +176,17 @@ object OverlayResultRenderer {
                 ).apply { topMargin = dp(context, 4) }
             })
         }
-        card.addView(TextView(context).apply {
-            text = "来源：${sr.bankName} · 相关度 ${sr.score}"
-            textSize = 10f
-            setTextColor(Color.parseColor("#AAAAAA"))
-            layoutParams = LinearLayout.LayoutParams(
-                LinearLayout.LayoutParams.MATCH_PARENT,
-                LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply { topMargin = dp(context, 2) }
-        })
+        if (showMeta) {
+            card.addView(TextView(context).apply {
+                text = "来源：${sr.bankName} · 相关度 ${sr.score}"
+                textSize = 10f * scale
+                setTextColor(Color.parseColor("#AAAAAA"))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply { topMargin = dp(context, 2) }
+            })
+        }
         return card
     }
 }
