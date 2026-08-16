@@ -4,6 +4,7 @@
  * 主路径由用户主动选择图片触发，不依赖悬浮窗或后台采集。
  */
 import { common } from '@kit.AbilityKit';
+import { router } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import promptAction from '@ohos.promptAction';
 import { FloatWindowManager } from '../overlay/FloatWindowManager';
@@ -359,15 +360,27 @@ struct Index {
 
   build() {
     Column() {
-      Row() {
+      Row({ space: 10 }) {
         Text('搜题助手')
           .fontSize(20)
           .fontWeight(FontWeight.Bold)
           .fontColor(Color.White)
+        Blank()
+        Button('使用说明')
+          .height(32)
+          .fontSize(13)
+          .backgroundColor('#1D9E75')
+          .onClick(() => router.pushUrl({ url: 'pages/ui/UsageGuidePage' }))
+        Button('设置')
+          .height(32)
+          .fontSize(13)
+          .backgroundColor('#1D9E75')
+          .onClick(() => router.pushUrl({ url: 'pages/ui/SettingsPage' }))
       }
       .width('100%')
       .height(56)
-      .justifyContent(FlexAlign.Center)
+      .padding({ left: 16, right: 16 })
+      .alignItems(VerticalAlign.Center)
       .backgroundColor('#1D9E75')
 
       Scroll() {

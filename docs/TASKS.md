@@ -21,13 +21,11 @@ related:
 # Tasks
 
 ## Recommended Next Action
-- 真机验证中文 OCR 和相册图片读取，确认主流程可用。
+- 按安卓路线继续对齐：读屏/扫描搜题；或真机验证当前主流程。
 
 ## Current
-- [ ] 真机验证 textRecognition 中文 OCR
-- [ ] 真机验证 PhotoViewPicker URI 能读取
-- [ ] 配置 DevEco 自动签名并安装 HAP
-- [ ] 验证题库导入 → OCR 搜索闭环
+- [ ] 真机验证中文 OCR 与相册读取
+- [ ] 对齐安卓读屏/扫描搜题
 
 ## Verification
 - 当前构建成功（未签名 HAP）。

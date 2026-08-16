@@ -29,3 +29,10 @@ related:
 - 关闭系统备份保护题库隐私。
 - 验证 Hvigor 构建成功（未签名 HAP）。
 - 建立 HarmonyOS 项目记忆。
+
+## 2026-08-17
+- 新增 SettingsPage.ets：设置页（当前版本、使用说明入口、隐私说明、清空本地题库）。
+- 新增 UsageGuidePage.ets：使用说明页。
+- Index 顶栏新增“使用说明 / 设置”入口，通过 router 跳转。
+- main_pages.json 注册新页面。
+- 本地构建 hvigorw assembleHap debug 通过（未签名 HAP）。
