@@ -24,7 +24,7 @@ related:
 - 继续拆 FloatWindowService：扫描循环、视图构建、读屏小窗构建。
 
 ## Current
-- [ ] 继续拆 FloatWindowService 扫描循环与视图构建
+- [ ] 继续拆 FloatWindowService 扫描循环与 buildStandbyUi（高耦合，需专项谨慎处理）
 
 ## Verification
 - 40 项单测通过；Lint 0 error；assembleDebug 成功（JDK 21）。
