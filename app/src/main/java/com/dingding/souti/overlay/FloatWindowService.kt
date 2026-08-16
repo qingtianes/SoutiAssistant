@@ -1,7 +1,10 @@
-package com.dingding.souti
+package com.dingding.souti.overlay
 
+import com.dingding.souti.QuestionBank
+import com.dingding.souti.SearchResult
 import com.dingding.souti.ocr.OcrBridge
 import com.dingding.souti.ocr.OcrQuestionProcessor
+import com.dingding.souti.ui.MainActivity
 
 import android.app.Notification
 import android.app.NotificationChannel

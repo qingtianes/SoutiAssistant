@@ -17,7 +17,7 @@
         android:theme="@style/Theme.SoutiAssistant">
 
         <activity
-            android:name=".MainActivity"
+            android:name=".ui.MainActivity"
             android:exported="true"
             android:launchMode="singleTask"
             android:theme="@style/Theme.SoutiAssistant.Transparent">
@@ -28,7 +28,7 @@
         </activity>
 
         <service
-            android:name=".FloatWindowService"
+            android:name=".overlay.FloatWindowService"
             android:exported="false"
             android:foregroundServiceType="mediaProjection" />
 
