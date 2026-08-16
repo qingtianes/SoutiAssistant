@@ -18,8 +18,8 @@ android {
         // targetSdk 34+ 会要求 MEDIA_PROJECTION 已被 runtime 授权才能启动 FGS mediaProjection
         // 模拟器冷启动后 runtime grants 丢失 → 必须先手动授权过 mediaProjection 才能启动服务
         targetSdk = 33
-        versionCode = 5
-        versionName = "1.1.0"
+        versionCode = 6
+        versionName = "1.1.1"
         // ★ ABI 包含主流架构（之前只生成 x86_64，鸿蒙 ARM64 手机装不上）
         //    arm64-v8a = 麒麟芯片（鸿蒙/现代安卓）
         //    armeabi-v7a = 旧安卓

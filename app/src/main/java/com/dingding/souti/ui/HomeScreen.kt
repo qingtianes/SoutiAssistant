@@ -9,6 +9,7 @@ import android.content.Intent
 import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
@@ -125,14 +126,16 @@ fun HomeScreen(onNavigate: (String) -> Unit, isDark: Boolean, onToggleTheme: () 
                 }
                 ThemeToggle(isDark = isDark, onToggle = onToggleTheme)
                 Spacer(Modifier.width(8.dp))
-                IconButton(
-                    onClick = { onNavigate("help") },
+                Box(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(CircleShape)
-                        .background(glass.primary)
+                        .background(glass.surface)
+                        .border(1.dp, glass.surfaceBorder, CircleShape)
+                        .clickable { onNavigate("help") },
+                    contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.Info, contentDescription = "使用说明", tint = glass.onPrimary)
+                    Icon(Icons.Filled.Info, contentDescription = "使用说明", tint = glass.textPrimary, modifier = Modifier.size(20.dp))
                 }
             }
             Spacer(Modifier.height(16.dp))
