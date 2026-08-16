@@ -25,6 +25,12 @@ related:
 - 建立安卓接管分支与基线标签。
 - 抽出 OcrQuestionProcessor（OCR 文本处理）并新增测试。
 - 抽出 QuestionMatcher（题目匹配评分）并新增 6 项测试，全量 37 项通过。
+- 抽出 QuestionRepository（题库存取）。
+- 拆出 BankChunker、FileFormatDetector 与 txt/docx/pdf/xls 四个解析器。
+- 包结构归位：import / ocr / overlay / ui / model / repository。
+- 浮窗/读屏互斥加固。
+- FloatWindowService 拆出：FrameImageUtils、OverlayResultRenderer、ServiceNotificationHelper、OverlayDragResizer、ProjectionVirtualDisplayFactory。
+- MainActivity 拆出：HomeScreen、ImportScreen、BankScreens。
 - 安装技能：find-skills、project-memory、self-improving-agent。
 - 将 ponytail 五个技能实体从 C 盘 .cc-switch 迁到 E:\Codex\CodexHome\skills，C 盘留 Junction。
 - 初始化项目记忆文件并回填真实项目信息。
