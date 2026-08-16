@@ -106,36 +106,35 @@ fun HomeScreen(onNavigate: (String) -> Unit) {
     }
 
     Column(modifier = Modifier.fillMaxSize().background(Color(0xFFF7F7F7)).verticalScroll(rememberScrollState()).statusBarsPadding().padding(16.dp)) {
-        Text("搜题助手", fontSize = 24.sp, fontWeight = FontWeight.Bold, color = Green)
-        Text("悬浮窗识别 + 自定义题库搜索", fontSize = 13.sp, color = Color.Gray)
+        Text("搜题助手", fontSize = 26.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
+        Text("浮窗 · 读屏 · 摄像头 · 本地题库", fontSize = 13.sp, color = Color.Gray)
         Spacer(Modifier.height(20.dp))
-        SectionTitle("搜题方式")
-        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp), shape = RoundedCornerShape(12.dp)) {
+        SectionTitle("快捷搜题")
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp), shape = RoundedCornerShape(18.dp)) {
             Column(modifier = Modifier.padding(16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text("浮窗搜题", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
-                    Spacer(Modifier.width(8.dp))
+                    Spacer(Modifier.weight(1f))
                     Box(Modifier.size(8.dp).clip(CircleShape).background(if (floatRunning) Green else if (hasOverlayPermission) Color(0xFFCCCCCC) else Red))
-                    Spacer(Modifier.width(4.dp))
+                    Spacer(Modifier.width(6.dp))
                     Text(when { floatRunning -> "运行中"; hasOverlayPermission -> "未开启"; else -> "未授权" }, fontSize = 12.sp, color = Color.Gray)
                 }
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    text = if (activeCount == 0) "⚠ 未勾选任何题库（去题库总览勾选后再启动）" else "✓ 已勾选 $activeCount 个题库用于搜题",
-                    fontSize = 11.sp, color = if (activeCount == 0) Red else Green
-                )
-                // ★ Service 启动失败时显示错误
+                Spacer(Modifier.height(6.dp))
+                Text("绿框实时识别 · 单题答案输出", fontSize = 12.sp, color = Color.Gray)
+                if (activeCount == 0) {
+                    Spacer(Modifier.height(6.dp))
+                    Text("⚠ 未勾选任何题库（去题库总览勾选后再启动）", fontSize = 11.sp, color = Red)
+                }
                 if (floatError.isNotEmpty()) {
                     Spacer(Modifier.height(2.dp))
                     Text("⚠ 启动失败：$floatError", fontSize = 10.sp, color = Red)
                 }
                 Spacer(Modifier.height(12.dp))
-Button(
+                Button(
                     onClick = {
                         when {
                             !hasOverlayPermission -> context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
                             floatRunning -> {
-                                // ★ 完全关闭服务：发 ACTION_STOP_SELF（Android 14+ 前台服务必须先 stopForeground）
                                 val stopIntent = Intent(context, FloatWindowService::class.java).apply {
                                     action = FloatWindowService.ACTION_STOP_SELF
                                 }
@@ -144,9 +143,6 @@ Button(
                                 floatRunning = false
                             }
                             else -> {
-                                // ★ 启动服务（首次或完全关闭后启动）—— 带 ACTION_START_SCAN 让 Service 立即显示主浮窗
-                                //    之前只用 startForegroundService 不传 action，导致 Service 只做 onCreate 初始化
-                                //    不显示主浮窗（onCreate 已不再自动 showFloatWindow）→ 浮窗"打不开"
                                 context.startForegroundService(Intent(context, FloatWindowService::class.java).apply {
                                     action = FloatWindowService.ACTION_START_SCAN
                                 })
@@ -155,47 +151,74 @@ Button(
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(44.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = if (floatRunning) Red else Green)
-                ) { Text(when { !hasOverlayPermission -> "授权悬浮窗权限"; floatRunning -> "关闭服务（需重新授权）"; else -> "启动服务" }, fontSize = 15.sp) }
+                ) { Text(when { !hasOverlayPermission -> "授权悬浮窗权限"; floatRunning -> "关闭服务"; else -> "启动服务" }, fontSize = 15.sp) }
             }
         }
-        MenuCard(
-            title = "读屏搜题",
-            subtitle = if (screenReadRunning) "运行中：右上角小窗 ✕ 关闭"
-                       else "全屏自动识别，答案小窗输出（不挡作答）"
-        ) {
-            // ★ 读屏模式：需要悬浮窗权限 + MediaProjection 授权
-            if (!Settings.canDrawOverlays(context)) {
-                // 没有悬浮窗权限 → 引导授权
-                context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
-            } else {
-                // 有悬浮窗权限 → 发读屏启动（无 MediaProjection 时 Service 内部引导授权）
-                val svcIntent = Intent(context, FloatWindowService::class.java).apply {
-                    action = FloatWindowService.ACTION_SCREEN_READ_START
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).clickable(onClick = {
+                if (!Settings.canDrawOverlays(context)) {
+                    context.startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}")))
+                } else if (screenReadRunning) {
+                    android.widget.Toast.makeText(context, "读屏搜题运行中：小窗右上角 ✕ 关闭", android.widget.Toast.LENGTH_SHORT).show()
+                } else {
+                    val svcIntent = Intent(context, FloatWindowService::class.java).apply {
+                        action = FloatWindowService.ACTION_SCREEN_READ_START
+                    }
+                    context.startService(svcIntent)
+                    android.widget.Toast.makeText(context, "读屏搜题已启动：小窗右上角 ✕ 关闭", android.widget.Toast.LENGTH_SHORT).show()
                 }
-                context.startService(svcIntent)
-                // 给个提示（如果正在读屏，提示怎么停）
-                android.widget.Toast.makeText(
-                    context,
-                    "读屏搜题已启动：小窗右上角 ✕ 关闭",
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
+            }),
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("读屏搜题", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
+                    Spacer(Modifier.height(3.dp))
+                    Text(if (screenReadRunning) "运行中：右上角小窗 ✕ 关闭" else "全屏识别 · 多题答案输出", fontSize = 12.sp, color = Color.Gray)
+                }
+                if (screenReadRunning) Box(Modifier.size(8.dp).clip(CircleShape).background(Green)) else Text("›", fontSize = 24.sp, color = Color.Gray)
             }
         }
-        MenuCard("扫描搜题", "摄像头实时扫描出题") { onNavigate("scan") }
-        MenuCard("AI 搜题", "在线大模型搜题（待开发）") {}
-        Spacer(Modifier.height(16.dp))
-        SectionTitle("题库管理")
-        // ★ 横向 4 图标网格（智能导入 / 题库总览 / 公共题库 / 远程导入）
-        Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 10.dp).clickable { onNavigate("scan") },
+            shape = RoundedCornerShape(18.dp)
+        ) {
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("扫描搜题", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
+                    Spacer(Modifier.height(3.dp))
+                    Text("摄像头实时扫描 · 取景框识别", fontSize = 12.sp, color = Color.Gray)
+                }
+                Text("›", fontSize = 24.sp, color = Color.Gray)
+            }
+        }
+        Card(modifier = Modifier.fillMaxWidth().padding(bottom = 6.dp), shape = RoundedCornerShape(18.dp)) {
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("AI 搜题", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFFAAAAAA))
+                Spacer(Modifier.weight(1f))
+                Text("待开发", fontSize = 12.sp, color = Color(0xFFBBBBBB))
+            }
+        }
+        Spacer(Modifier.height(14.dp))
+        SectionTitle("题库")
+        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             BankIcon("📁", "智能导入", enabled = true) { onNavigate("import") }
             BankIcon("📚", "题库总览", enabled = true) { onNavigate("overview") }
-            BankIcon("🌐", "公共题库", enabled = false) {}
-            BankIcon("🔗", "远程导入", enabled = false) {}
         }
-        Spacer(Modifier.height(16.dp))
+        Spacer(Modifier.height(14.dp))
         SectionTitle("设置")
-        MenuCard("设置", "权限 / 识别匹配 / 浮窗显示 / 扫描 / 关于") { onNavigate("settings") }
+        Card(modifier = Modifier.fillMaxWidth().clickable { onNavigate("settings") }, shape = RoundedCornerShape(18.dp)) {
+            Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("设置", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = Color(0xFF222222))
+                    Spacer(Modifier.height(3.dp))
+                    Text("权限 / 识别匹配 / 浮窗显示 / 扫描 / 关于", fontSize = 12.sp, color = Color.Gray)
+                }
+                Text("›", fontSize = 24.sp, color = Color.Gray)
+            }
+        }
         Spacer(Modifier.height(32.dp))
     }
 }
