@@ -54,6 +54,7 @@ fun App() {
             "overview" -> OverviewScreen(onBack = { screen = "home" }, onOpenBank = { id -> openBankId = id; screen = "bank" })
             "bank" -> openBankId?.let { BankDetailScreen(bankId = it, onBack = { screen = "overview" }) }
             "scan" -> ScanScreen(onBack = { screen = "home" })
+            "settings" -> SettingsScreen(onBack = { screen = "home" })
         }
     }
 }
@@ -194,23 +195,7 @@ Button(
         }
         Spacer(Modifier.height(16.dp))
         SectionTitle("设置")
-        MenuCard("权限管理", "悬浮窗 / 截屏 / 摄像头 / 通知") {}
-        MenuCard("OCR 引擎", "中文 ML Kit 离线识别（明早集成）") {}
-        // ★ 调试开关：控制浮窗红色边框（OCR 截屏范围）显示
-        val context = LocalContext.current
-        var showDebugBorder by remember { mutableStateOf(false) }
-        MenuCard(
-            title = "显示 OCR 识别范围",
-            subtitle = if (showDebugBorder) "开启：浮窗红色边框显示 OCR 真实截屏范围" else "关闭：浮窗干净无调试元素",
-            onClick = {
-                showDebugBorder = !showDebugBorder
-                val intent = Intent(context, FloatWindowService::class.java).apply {
-                    action = FloatWindowService.ACTION_TOGGLE_DEBUG
-                }
-                try { context.startService(intent) } catch (_: Exception) {}
-            }
-        )
-        MenuCard("关于", "搜题助手 v1.0") {}
+        MenuCard("设置", "权限 / 识别匹配 / 浮窗显示 / 扫描 / 关于") { onNavigate("settings") }
         Spacer(Modifier.height(32.dp))
     }
 }

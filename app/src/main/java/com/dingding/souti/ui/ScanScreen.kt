@@ -45,6 +45,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
@@ -73,6 +74,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dingding.souti.model.SearchResult
 import com.dingding.souti.repository.QuestionBank
+import com.dingding.souti.repository.SettingsStore
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
@@ -111,6 +113,7 @@ fun ScanScreen(onBack: () -> Unit) {
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
     var zoomRatio by remember { mutableStateOf(1f) }
+    var paused by remember { mutableStateOf(false) }
     var controller by remember { mutableStateOf<CameraScanController?>(null) }
 
     val previewView = remember {
@@ -127,24 +130,31 @@ fun ScanScreen(onBack: () -> Unit) {
                 context = context.applicationContext,
                 lifecycleOwner = lifecycleOwner,
                 previewView = previewView,
+                viewfinderFraction = SettingsStore.viewfinderFraction(context),
+                ocrThrottleMs = SettingsStore.ocrThrottleMs(context),
                 onZoomChanged = { zoomRatio = it },
                 onText = { text ->
-                    recognizedText = text
-                    searchJob?.cancel()
-                    if (text.isBlank()) {
-                        results = emptyList()
-                    } else {
-                        searchJob = scope.launch {
-                            val found = withContext(Dispatchers.IO) {
-                                bank.search(text, limit = 10)
+                    if (!paused) {
+                        recognizedText = text
+                        searchJob?.cancel()
+                        if (text.isBlank()) {
+                            results = emptyList()
+                        } else {
+                            searchJob = scope.launch {
+                                val found = withContext(Dispatchers.IO) {
+                                    val limit = SettingsStore.resultLimit(context)
+                                    val minScore = SettingsStore.minScore(context)
+                                    bank.search(text, limit = limit).filter { it.score >= minScore }
+                                }
+                                results = found
                             }
-                            results = found
                         }
                     }
                 }
             )
             controller = camera
             camera.start()
+            camera.setZoomRatio(SettingsStore.scanZoom(context))
             onDispose {
                 camera.stop()
                 if (controller === camera) controller = null
@@ -211,7 +221,7 @@ fun ScanScreen(onBack: () -> Unit) {
                             .fillMaxSize()
                             .clip(RoundedCornerShape(8.dp))
                     )
-                    ViewfinderOverlay(modifier = Modifier.fillMaxSize())
+                    ViewfinderOverlay(fraction = SettingsStore.viewfinderFraction(context), modifier = Modifier.fillMaxSize())
                     ZoomControls(
                         zoomRatio = zoomRatio,
                         onZoomIn = { controller?.setZoomRatio(zoomRatio * ZOOM_STEP) },
@@ -261,6 +271,10 @@ fun ScanScreen(onBack: () -> Unit) {
                         fontWeight = FontWeight.Bold,
                         color = Color.Gray
                     )
+                    TextButton(onClick = { paused = !paused }) {
+                        Text(if (paused) "继续" else "暂停", fontSize = 14.sp, color = Green)
+                    }
+                    Spacer(Modifier.weight(1f))
                     Spacer(Modifier.weight(1f))
                     IconButton(onClick = onBack) {
                         Icon(Icons.Filled.Close, "关闭")
@@ -296,12 +310,12 @@ fun ScanScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ViewfinderOverlay(modifier: Modifier = Modifier) {
+private fun ViewfinderOverlay(fraction: Float, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
         val vfW = w * VF_WIDTH_FRACTION
-        val vfH = h * VF_HEIGHT_FRACTION
+        val vfH = h * fraction
         val left = (w - vfW) / 2f
         val top = (h - vfH) / 2f
         val right = left + vfW
@@ -426,6 +440,8 @@ private class CameraScanController(
     private val context: Context,
     private val lifecycleOwner: LifecycleOwner,
     private val previewView: PreviewView,
+    private val viewfinderFraction: Float,
+    private val ocrThrottleMs: Long,
     private val onZoomChanged: (Float) -> Unit,
     private val onText: (String) -> Unit
 ) {
@@ -524,7 +540,7 @@ private class CameraScanController(
     @androidx.annotation.OptIn(ExperimentalGetImage::class)
     private fun analyze(imageProxy: ImageProxy) {
         val now = SystemClock.elapsedRealtime()
-        if (now - lastAnalyzedAt < OCR_THROTTLE_MS || analyzing) {
+        if (now - lastAnalyzedAt < ocrThrottleMs || analyzing) {
             imageProxy.close()
             return
         }
@@ -575,8 +591,8 @@ private class CameraScanController(
 
         val vfLeft = viewW * (1f - VF_WIDTH_FRACTION) / 2f
         val vfRight = viewW * (1f + VF_WIDTH_FRACTION) / 2f
-        val vfTop = viewH * (1f - VF_HEIGHT_FRACTION) / 2f
-        val vfBottom = viewH * (1f + VF_HEIGHT_FRACTION) / 2f
+        val vfTop = viewH * (1f - viewfinderFraction) / 2f
+        val vfBottom = viewH * (1f + viewfinderFraction) / 2f
 
         val imgVfLeft = (vfLeft - offX) / scale
         val imgVfRight = (vfRight - offX) / scale
