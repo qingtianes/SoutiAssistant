@@ -4,7 +4,7 @@
 
 ## 当前版本
 
-- **阶段**：本地题库闭环完成，未真机验证
+- **阶段**：本地题库闭环 + 设置中心 + 使用说明完成，未真机验证
 - **当前分支**：`main`（接管工作已合并）
 
 ## 已完成
@@ -15,6 +15,8 @@
 | 题库管理 | TXT 导入、启用/停用、删除 |
 | 智能匹配 | LCS 最长公共子串 + 完全包含打分 |
 | 本地存储 | 应用私有 JSON，关闭系统备份 |
+| 设置中心 | 版本 / 使用说明 / 隐私 / 清空题库 |
+| 使用说明 | 题库导入 → 图片识别 → 搜索答案 → 设置 |
 
 ## 项目结构
 
@@ -28,7 +30,7 @@ entry/src/main/ets/
 ├── picker/      ImagePickerService
 ├── overlay/     FloatWindowManager、FloatPage
 ├── camera/      CameraHelper（未接入）
-└── ui/          Index
+├── ui/          Index、SettingsPage、UsageGuidePage
 ```
 
 ## 构建
