@@ -91,3 +91,20 @@ E:\SoutiAssistant_Harmony\
 ## 📜 版本历史
 
 - **v0.1-mvp**（2026-08-07）— 工程骨架 + 悬浮窗框架 + 题库模型；浮窗内容占位，OCR 未接
+
+## 🔄 接管后更新（分支 codex/takeover-20260815）
+
+- 模块边界已对齐安卓：
+  - `model`：题库模型
+  - `repository`：题库存取
+  - `service`：搜索编排与匹配算法
+  - `import`：TXT 文件选择读取
+  - `ocr`：官方 textRecognition
+  - `picker`：PhotoViewPicker
+  - `overlay`：悬浮窗管理
+  - `camera`：相机能力（未接入）
+  - `ui`：主页面
+- 已完成：图片选择 → 官方 OCR → 本地题库搜索 → TXT 题库导入/启用/删除。
+- 题库存储改为应用私有 JSON，关闭系统备份。
+- 构建验证：`hvigor assembleHap` 成功（未签名）。
+- 待办：真机验证中文 OCR、相册 URI 读取、DevEco 自动签名。
