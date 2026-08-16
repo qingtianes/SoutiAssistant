@@ -1096,149 +1096,33 @@ class FloatWindowService : Service() {
      */
     private fun buildScreenReadWindow() {
         if (screenReadWindow != null) return
-        val win = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            background = GradientDrawable().apply {
-                setColor(Color.parseColor("#44000000"))  // 26% 不透明黑（背景几乎透明，屏幕内容清晰可见）
-                cornerRadius = dp(12).toFloat()
-                setStroke(dp(1), Color.parseColor("#33FFFFFF"))  // 1dp 白色细边框（微弱轮廓，避免完全看不见）
+        val callbacks = object : ScreenReadWindowCallbacks {
+            override fun isActive() = screenReadActive
+            override fun togglePause(): Boolean {
+                if (screenReadActive) stopScreenReadLoop() else startScreenReadLoop()
+                return screenReadActive
             }
-            setPadding(dp(6), dp(4), dp(6), dp(4))
-        }
-        // ── 标题栏（可拖拽移动整窗）──
-        val titleBar = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-        }
-        titleBar.addView(TextView(this).apply {
-            text = "读屏搜题"
-            textSize = 12f
-            setTypeface(typeface, Typeface.BOLD)
-            setTextColor(Color.parseColor("#FFFFFF"))
-        })
-        // ★ 模式指示（单题 = 整段匹配，多题 = 按“答案：”切分），processScreenReadText 里更新
-        val modeText = TextView(this).apply {
-            text = ""
-            textSize = 10f
-            setTextColor(Color.parseColor("#9FE1CB"))  // 浅绿
-            setPadding(dp(6), dp(0), dp(4), dp(0))
-        }
-        titleBar.addView(modeText)
-        titleBar.addView(View(this).apply { layoutParams = LinearLayout.LayoutParams(0, 0, 1f) })
-        // 暂停/继续按钮
-        val pauseBtn = TextView(this).apply {
-            text = "⏸"
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(dp(6), dp(2), dp(6), dp(2))
-            setOnClickListener {
-                if (screenReadActive) {
-                    stopScreenReadLoop()
-                    text = "▶"
-                } else {
-                    startScreenReadLoop()
-                    text = "⏸"
-                }
+            override fun minimize() = minimizeScreenReadWindow()
+            override fun close() = stopScreenRead()
+            override fun bindDrag(win: View, titleBar: View, resizeHandle: View, p: WindowManager.LayoutParams) {
+                bindScreenReadDragAndResize(win, titleBar, resizeHandle, p)
             }
         }
-        titleBar.addView(pauseBtn)
-        // 最小化（缩成小圆点，便于暂时收起界面）
-        val minBtn = TextView(this).apply {
-            text = "—"
-            textSize = 14f
-            setTextColor(Color.WHITE)
-            gravity = Gravity.CENTER
-            setPadding(dp(8), dp(2), dp(8), dp(2))
-            setOnClickListener { minimizeScreenReadWindow() }
-        }
-        titleBar.addView(minBtn)
-        // 关闭
-        val closeBtn = TextView(this).apply {
-            text = "✕"
-            textSize = 12f
-            setTextColor(Color.parseColor("#E24B4A"))
-            gravity = Gravity.CENTER
-            setPadding(dp(6), dp(2), dp(6), dp(2))
-            setOnClickListener { stopScreenRead() }
-        }
-        titleBar.addView(closeBtn)
-        win.addView(titleBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28)))
-        // ── ★ OCR 状态栏（识别中/已识别/未识别）+ 原文预览（2 行截短）──
-        val statusText = TextView(this).apply {
-            text = "🔄 等待首次识别..."
-            textSize = 11f
-            setTextColor(Color.parseColor("#FAC775"))  // 黄：识别中
-            setPadding(dp(4), dp(2), dp(4), dp(0))
-        }
-        val ocrPreview = TextView(this).apply {
-            text = ""
-            textSize = 9f
-            setTextColor(Color.parseColor("#CCCCCC"))
-            maxLines = 2
-            ellipsize = TextUtils.TruncateAt.END
-            setPadding(dp(4), dp(0), dp(4), dp(4))
-        }
-        val statusBar = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
-        statusBar.addView(statusText, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        statusBar.addView(ocrPreview, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        win.addView(statusBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-        // ── 结果区 ScrollView（多题答案列表）──
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-        }
-        container.addView(TextView(this).apply {
-            text = "（匹配答案将在这里显示）"
-            textSize = 11f
-            setTextColor(Color.parseColor("#CCCCCC"))  // 透明底用浅灰更清晰
-            gravity = Gravity.CENTER
-            setPadding(dp(4), dp(10), dp(4), dp(10))
-        })
-        val scroll = ScrollView(this).apply {
-            isVerticalScrollBarEnabled = true
-            addView(container)
-        }
-        win.addView(scroll, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
-        // ── 右下角缩放手柄 ◢ ──
-        val resizeHandle = TextView(this).apply {
-            text = "◢"
-            textSize = 10f
-            setTextColor(Color.parseColor("#888888"))
-            gravity = Gravity.CENTER
-        }
-        val handleLp = LinearLayout.LayoutParams(dp(24), dp(18))
-        handleLp.gravity = Gravity.END
-        win.addView(resizeHandle, handleLp)
-
-        // ── 窗口参数：右上角靠边，260x360dp ──
-        val p = WindowManager.LayoutParams(
-            dp(260), dp(360),
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            // ★ 统一用 TOP|START（左上角锚定）：p.x=距左边缘距离，p.y=距顶边缘距离
-            //    拖动 p.x/p.y 直接用 +dx/+dy；resize 左上角锚定不动，◢ 跟手指缩放
-            //    ★★ 默认位置改到屏幕右下角（避开中央题目区，全窗涂白时不挡题）
-            gravity = Gravity.TOP or Gravity.START
-            val dispW = resources.displayMetrics.widthPixels
-            val dispH = resources.displayMetrics.heightPixels
-            x = (dispW - dp(260) - dp(8)).coerceAtLeast(0)   // 贴右缘 - 小窗宽 - 边距
-            y = (dispH - dp(360) - dp(100)).coerceAtLeast(0) // 贴底缘 - 小窗高 - 边距（避开导航栏）
-        }
+        val built = ScreenReadWindowBuilder.build(
+            this, resources.displayMetrics.widthPixels, resources.displayMetrics.heightPixels, ::dp, callbacks
+        )
         try {
-            windowManager.addView(win, p)
+            windowManager.addView(built.window, built.params)
         } catch (e: Exception) {
             Log.e("FloatWindow", "读屏小窗创建失败: ${e.message}")
             return
         }
-        screenReadWindow = win
-        screenReadParams = p
-        screenReadContainer = container
-        screenReadStatusText = statusText  // ★ OCR 状态行引用
-        screenReadOcrPreview = ocrPreview  // ★ OCR 原文预览引用
-        screenReadModeText = modeText      // ★ 模式指示标签引用
-        bindScreenReadDragAndResize(win, titleBar, resizeHandle, p)
+        screenReadWindow = built.window
+        screenReadParams = built.params
+        screenReadContainer = built.container
+        screenReadStatusText = built.statusText
+        screenReadOcrPreview = built.ocrPreview
+        screenReadModeText = built.modeText
         Log.d("FloatWindow", "读屏小窗已创建 260x360dp")
     }
 
