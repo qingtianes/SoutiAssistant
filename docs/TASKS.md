@@ -27,7 +27,7 @@ related:
 - [ ] 继续拆 FloatWindowService 扫描循环与视图构建
 
 ## Verification
-- 37 项单测通过；Lint 0 error；assembleDebug 成功（JDK 21）。
+- 40 项单测通过；Lint 0 error；assembleDebug 成功（JDK 21）。
 - 当前工作区干净。
 
 ## Blockers
