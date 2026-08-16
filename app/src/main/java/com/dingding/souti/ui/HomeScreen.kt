@@ -54,7 +54,8 @@ fun App() {
             "overview" -> OverviewScreen(onBack = { screen = "home" }, onOpenBank = { id -> openBankId = id; screen = "bank" })
             "bank" -> openBankId?.let { BankDetailScreen(bankId = it, onBack = { screen = "overview" }) }
             "scan" -> ScanScreen(onBack = { screen = "home" })
-            "settings" -> SettingsScreen(onBack = { screen = "home" })
+            "settings" -> SettingsScreen(onBack = { screen = "home" }, onOpenGuide = { screen = "help" })
+            "help" -> UsageGuideScreen(onBack = { screen = "settings" })
         }
     }
 }

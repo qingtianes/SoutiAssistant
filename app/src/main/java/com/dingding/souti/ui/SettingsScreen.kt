@@ -53,7 +53,7 @@ import com.dingding.souti.repository.QuestionRepository
 import com.dingding.souti.repository.SettingsStore
 
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onOpenGuide: () -> Unit) {
     val context = LocalContext.current
     val cameraLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -147,6 +147,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             InfoRow("当前版本", appVersion(context))
             InfoRow("更新日志", "查看 v1.0 新增与修复") { showChangelog = true }
             InfoRow("隐私说明", "OCR 完全本机处理，不上传任何内容") { showPrivacy = true }
+            InfoRow("使用说明", "各功能的简要操作步骤") { onOpenGuide() }
             InfoRow("意见反馈", "前往 GitHub 提交问题") {
                 context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/qingtianes/SoutiAssistant/issues")))
             }
