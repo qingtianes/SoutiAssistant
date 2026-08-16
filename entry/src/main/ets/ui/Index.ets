@@ -8,7 +8,7 @@ import { BusinessError } from '@kit.BasicServicesKit';
 import promptAction from '@ohos.promptAction';
 import { FloatWindowManager } from '../overlay/FloatWindowManager';
 import { Bank, Question, SearchResult } from '../model/QuestionBankModels';
-import { QuestionBank } from '../repository/QuestionBank';
+import { QuestionBank } from '../service/QuestionBank';
 import { ImagePickerService } from '../picker/ImagePickerService';
 import { OcrService } from '../ocr/OcrService';
 import { SelectedTextBank, TextBankImportService } from '../importer/TextBankImportService';

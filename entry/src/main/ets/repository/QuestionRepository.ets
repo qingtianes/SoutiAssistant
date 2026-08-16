@@ -1,5 +1,5 @@
 import preferences from '@ohos.data.preferences';
-import common from '@ohos.app.ability.common';
+import { common } from '@kit.AbilityKit';
 import { fileIo } from '@kit.CoreFileKit';
 import { Bank, Question } from '../model/QuestionBankModels';
 

@@ -1,7 +1,7 @@
-import common from '@ohos.app.ability.common';
+import { common } from '@kit.AbilityKit';
 import { Bank, Question, SearchResult } from '../model/QuestionBankModels';
 import { QuestionMatcher } from './QuestionMatcher';
-import { QuestionRepository } from './QuestionRepository';
+import { QuestionRepository } from '../repository/QuestionRepository';
 
 /** 题库管理器：对上层提供题库读取、导入、启用和搜索；底层存取委托给 QuestionRepository。 */
 export class QuestionBank {
