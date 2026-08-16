@@ -32,10 +32,11 @@ related:
 - 本机 SDK：E:\Huawei\DevEco Studio\sdk\default。
 
 ## Structure
-- entry/src/main/ets/pages/Index.ets：主页面（图片 OCR + 题库管理）。
-- entry/src/main/ets/pages/FloatPage.ets：实验性悬浮窗 Demo。
-- entry/src/main/ets/common/：CameraHelper、FloatWindowManager。
-- entry/src/main/ets/model/QuestionBank.ets：题库模型、LCS 搜索、TXT 解析。
+- entry/src/main/ets/ui/Index.ets：主页面（图片 OCR + 题库管理）。
+- entry/src/main/ets/overlay/FloatPage.ets：实验性悬浮窗 Demo。
+- entry/src/main/ets/overlay/FloatWindowManager.ets、entry/src/main/ets/ocr/CameraHelper.ets。
+- entry/src/main/ets/model/QuestionBankModels.ets：题库模型。
+- entry/src/main/ets/repository/：QuestionBank、QuestionRepository、QuestionMatcher。
 - entry/src/main/ets/importer/TextBankImportService.ets：TXT 文件选择读取。
 - entry/src/main/ets/ocr/OcrService.ets：官方 textRecognition OCR。
 - entry/src/main/ets/picker/ImagePickerService.ets：PhotoViewPicker 选图。
