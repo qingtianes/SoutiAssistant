@@ -128,11 +128,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 options = listOf("小", "中", "大"),
                 selected = SettingsStore.frameSize(context)
             ) { SettingsStore.setFrameSize(context, it) }
-            ChoiceRow(
-                title = "输出窗默认位置",
-                options = listOf("跟随主窗", "右下", "左下"),
-                selected = positionLabel(SettingsStore.outputPosition(context))
-            ) { SettingsStore.setOutputPosition(context, positionKey(it)) }
         }
 
         SettingsSection("扫描搜题") {
@@ -300,7 +295,5 @@ private fun speedKey(label: String) = when (label) { "快" -> "fast"; "省电" -
 private fun speedLabel(key: String) = when (key) { "fast" -> "快"; "slow" -> "省电"; else -> "标准" }
 private fun fontKey(label: String) = when (label) { "小" -> "small"; "大" -> "large"; else -> "medium" }
 private fun fontLabel(key: String) = when (key) { "small" -> "小"; "large" -> "大"; else -> "中" }
-private fun positionKey(label: String) = when (label) { "右下" -> "bottom_right"; "左下" -> "bottom_left"; else -> "follow_main" }
-private fun positionLabel(key: String) = when (key) { "bottom_left" -> "左下"; "bottom_right" -> "右下"; else -> "跟随主窗" }
 private fun viewfinderKey(label: String) = if (label == "单行") "single" else "double"
 private fun viewfinderLabel(key: String) = if (key == "single") "单行" else "双行"

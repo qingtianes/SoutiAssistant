@@ -19,7 +19,6 @@ object SettingsStore {
     private const val KEY_FONT_SCALE = "font_scale"
     private const val KEY_SHOW_META = "show_meta"
     private const val KEY_FRAME_SIZE = "frame_size"
-    private const val KEY_OUTPUT_POSITION = "output_position"
 
     // 扫描搜题
     private const val KEY_SCAN_ZOOM = "scan_zoom"
@@ -31,7 +30,6 @@ object SettingsStore {
     const val FONT_SCALE_DEFAULT = "medium"
     const val SHOW_META_DEFAULT = true
     const val FRAME_SIZE_DEFAULT = "medium"
-    const val OUTPUT_POSITION_DEFAULT = "follow_main"
     const val SCAN_ZOOM_DEFAULT = 1f
     const val VIEWFINDER_HEIGHT_DEFAULT = "double"
 
@@ -100,12 +98,7 @@ object SettingsStore {
         else -> 352 to 150
     }
     
-    fun outputPosition(ctx: Context): String =
-        prefs(ctx).getString(KEY_OUTPUT_POSITION, OUTPUT_POSITION_DEFAULT) ?: OUTPUT_POSITION_DEFAULT
 
-    fun setOutputPosition(ctx: Context, value: String) {
-        prefs(ctx).edit().putString(KEY_OUTPUT_POSITION, value).apply()
-    }
 
     // ---- 扫描搜题 ----
     fun scanZoom(ctx: Context): Float =

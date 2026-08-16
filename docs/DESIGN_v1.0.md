@@ -17,7 +17,6 @@
 | 识别速度 | 扫描 CameraScanController 节流、FloatWindowService 节流 |
 | 结果字号、显示匹配分/来源 | OverlayResultRenderer 结果卡片 |
 | 绿框默认大小 | StandbyUiBuilder 默认识别区尺寸 |
-| 输出窗默认位置 | OutputWindow 初始位置 |
 | 默认缩放、取景框高度 | ScanScreen / CameraScanController |
 
 ## 4. 暂停/继续状态机

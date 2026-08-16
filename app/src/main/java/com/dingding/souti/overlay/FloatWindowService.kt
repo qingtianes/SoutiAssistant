@@ -1629,22 +1629,8 @@ class FloatWindowService : Service() {
         val lp = outputWindowParams ?: return
         lp.gravity = Gravity.TOP or Gravity.START
         lp.width = main.width
-        val margin = dp(8)
-        val dm = resources.displayMetrics
-        when (SettingsStore.outputPosition(this)) {
-            "bottom_right" -> {
-                lp.x = dm.widthPixels - lp.width - margin
-                lp.y = dm.heightPixels - lp.height - margin
-            }
-            "bottom_left" -> {
-                lp.x = margin
-                lp.y = dm.heightPixels - lp.height - margin
-            }
-            else -> {
-                lp.x = main.x
-                lp.y = main.y + main.height
-            }
-        }
+        lp.x = main.x
+        lp.y = main.y + main.height
         outputPositionInitialized = true
         outputManuallyDragged = false
     }
