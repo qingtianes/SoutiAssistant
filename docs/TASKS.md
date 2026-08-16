@@ -33,6 +33,16 @@ related:
 ## Blockers
 - 无。
 
+## Verification Note (2026-08-16)
+- 模拟器烟测：浮窗搜题 OCR 循环正常，识别 19 字符，搜索到 2 条匹配；结论：功能未受影响。
+- 截图方式：PowerShell 直接重定向会破坏 PNG，后续用 WriteAllBytes 或 Git Bash。
+
+## Future Improvements
+- [ ] OCR 识别框默认高度偏窄（约 115px），后续调宽以容纳题干+选项
+- [ ] 考虑浮窗在 souti 自身页面时的让位/收起策略
+- [ ] 复核浮窗顶栏答案标识与结果卡的一致性
+- [ ] 复核 2 条匹配的渲染数量
+
 ## Done
 - [x] 建立接管分支与基线标签
 - [x] 抽出 OcrQuestionProcessor、QuestionMatcher、QuestionRepository
