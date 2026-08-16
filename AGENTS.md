@@ -19,3 +19,5 @@ docs/*.md memory files use Project Memory Metadata v1 frontmatter; preserve it w
 - 不修改 CODEX_HOME；文件尽量放 E 盘。
 - 构建前设置 JAVA_HOME 为 E:\Huawei\DevEco Studio\jbr。
 - 每次改动后运行 testDebugUnitTest、lintDebug、assembleDebug。
+
+- Agent 技能分工见 docs/AGENT_SKILLS.md。
