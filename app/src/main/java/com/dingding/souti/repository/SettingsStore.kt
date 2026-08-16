@@ -58,11 +58,7 @@ object SettingsStore {
         prefs(ctx).edit().putString(KEY_OCR_SPEED, value).apply()
     }
 
-    fun ocrThrottleMs(ctx: Context): Long = when (ocrSpeed(ctx)) {
-        "fast" -> 500L
-        "slow" -> 1500L
-        else -> 1000L
-    }
+    fun ocrThrottleMs(ctx: Context): Long = SettingsLogic.ocrThrottleMs(ocrSpeed(ctx))
 
     // ---- 浮窗显示 ----
     fun fontScale(ctx: Context): String =
@@ -72,11 +68,7 @@ object SettingsStore {
         prefs(ctx).edit().putString(KEY_FONT_SCALE, value).apply()
     }
 
-    fun fontScaleFactor(ctx: Context): Float = when (fontScale(ctx)) {
-        "small" -> 0.85f
-        "large" -> 1.2f
-        else -> 1f
-    }
+    fun fontScaleFactor(ctx: Context): Float = SettingsLogic.fontScaleFactor(fontScale(ctx))
 
     fun showMeta(ctx: Context): Boolean =
         prefs(ctx).getBoolean(KEY_SHOW_META, SHOW_META_DEFAULT)
@@ -92,11 +84,7 @@ object SettingsStore {
         prefs(ctx).edit().putString(KEY_FRAME_SIZE, value).apply()
     }
 
-    fun frameSizeDp(ctx: Context): Pair<Int, Int> = when (frameSize(ctx)) {
-        "small" -> 280 to 120
-        "large" -> 420 to 180
-        else -> 352 to 150
-    }
+    fun frameSizeDp(ctx: Context): Pair<Int, Int> = SettingsLogic.frameSizeDp(frameSize(ctx))
     
 
 
@@ -116,10 +104,7 @@ object SettingsStore {
         prefs(ctx).edit().putString(KEY_VIEWFINDER_HEIGHT, value).apply()
     }
 
-    fun viewfinderFraction(ctx: Context): Float = when (viewfinderHeight(ctx)) {
-        "single" -> 0.20f
-        else -> 0.40f
-    }
+    fun viewfinderFraction(ctx: Context): Float = SettingsLogic.viewfinderFraction(viewfinderHeight(ctx))
 
     /** 清空全部设置，回到默认值。 */
     fun reset(ctx: Context) {
