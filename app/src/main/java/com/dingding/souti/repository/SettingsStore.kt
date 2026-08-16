@@ -31,7 +31,7 @@ object SettingsStore {
     const val FONT_SCALE_DEFAULT = "medium"
     const val SHOW_META_DEFAULT = true
     const val FRAME_SIZE_DEFAULT = "medium"
-    const val OUTPUT_POSITION_DEFAULT = "bottom_right"
+    const val OUTPUT_POSITION_DEFAULT = "follow_main"
     const val SCAN_ZOOM_DEFAULT = 1f
     const val VIEWFINDER_HEIGHT_DEFAULT = "double"
 

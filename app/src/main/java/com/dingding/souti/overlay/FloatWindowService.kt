@@ -1629,12 +1629,32 @@ class FloatWindowService : Service() {
         val lp = outputWindowParams ?: return
         lp.gravity = Gravity.TOP or Gravity.START
         lp.width = main.width
-        lp.x = main.x
-        lp.y = main.y + main.height
+        val margin = dp(8)
+        val dm = resources.displayMetrics
+        when (SettingsStore.outputPosition(this)) {
+            "bottom_right" -> {
+                lp.x = dm.widthPixels - lp.width - margin
+                lp.y = dm.heightPixels - lp.height - margin
+            }
+            "bottom_left" -> {
+                lp.x = margin
+                lp.y = dm.heightPixels - lp.height - margin
+            }
+            else -> {
+                lp.x = main.x
+                lp.y = main.y + main.height
+            }
+        }
         outputPositionInitialized = true
         outputManuallyDragged = false
     }
-
+    private fun hideOutputWindow() {
+        outputWindow?.visibility = View.GONE
+        if (outputWindowAdded) {
+            try { windowManager.removeView(outputWindow) } catch (_: Exception) {}
+            outputWindowAdded = false
+        }
+    }
     /** 输出窗在服务运行时始终显示；空结果时保留标题栏和空占位。 */
     private fun showOutputWindow() {
         ensureOutputWindow()
@@ -1644,14 +1664,6 @@ class FloatWindowService : Service() {
         val lp = outputWindowParams ?: return
         lp.width = params?.width ?: lp.width
         addOrUpdateOutputWindow()
-    }
-
-    private fun hideOutputWindow() {
-        outputWindow?.visibility = View.GONE
-        if (outputWindowAdded) {
-            try { windowManager.removeView(outputWindow) } catch (_: Exception) {}
-            outputWindowAdded = false
-        }
     }
 
     private fun updateOutputWindowAfterRender() {
