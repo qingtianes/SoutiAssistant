@@ -1177,7 +1177,7 @@ class FloatWindowService : Service() {
             }
             // ★ 滚动检测（仅做日志，不阻塞 OCR）
             val thumb = Bitmap.createScaledBitmap(full, 32, 64, false)
-            val diffRatio = computeFrameDiff(thumb, lastFrameThumb)
+            val diffRatio = FrameImageUtils.computeFrameDiff(thumb, lastFrameThumb)
             lastFrameThumb?.recycle()
             lastFrameThumb = thumb
             // ★ 状态栏实时显示进度（让用户直观看到 OCR 链路走到哪步）
@@ -1201,10 +1201,10 @@ class FloatWindowService : Service() {
             val cropY1 = full.height - navBarH
             val cropped = Bitmap.createBitmap(full, 0, cropY0, full.width, cropY1 - cropY0)
             // ★ 自适应反色：检测图片平均亮度，深色背景（黑底白字）自动反色成白底黑字
-            val avgBrightness = computeAverageBrightness(cropped)
+            val avgBrightness = FrameImageUtils.computeAverageBrightness(cropped)
             if (avgBrightness < 100) {
                 Log.d("FloatWindow", "读屏: 检测到深色背景(avg=$avgBrightness)，执行反色")
-                invertBitmap(cropped)
+                FrameImageUtils.invertBitmap(cropped)
             }
             // ★ 缩放到 1080 宽（之前 720 太小：13sp 文字缩到 14.6px 高，ML Kit 中文要求≥24px → 错字"呋喃→味喃""分数→分教" + 漏题号）
             //    1080 宽 → 文字 21.9px 高，接近 ML Kit 下限，识别率显著提升
@@ -1293,53 +1293,6 @@ class FloatWindowService : Service() {
     }
 
     /** 计算两帧缩略图 diff 比例（0-1）：逐像素比较 RGB 亮度差 */
-    private fun computeFrameDiff(a: Bitmap, b: Bitmap?): Float {
-        if (b == null || a.width != b.width || a.height != b.height) return 1f
-        var diffPixels = 0
-        val w = a.width
-        val h = a.height
-        for (y in 0 until h) {
-            for (x in 0 until w) {
-                val pa = a.getPixel(x, y)
-                val pb = b.getPixel(x, y)
-                val dr = Math.abs((pa shr 16 and 0xFF) - (pb shr 16 and 0xFF))
-                val dg = Math.abs((pa shr 8 and 0xFF) - (pb shr 8 and 0xFF))
-                val db = Math.abs((pa and 0xFF) - (pb and 0xFF))
-                if (dr + dg + db > 90) diffPixels++
-            }
-        }
-        return diffPixels.toFloat() / (w * h)
-    }
-
-    /** 计算 bitmap 平均亮度（0-255）：采样 1/8 像素加速 */
-    private fun computeAverageBrightness(bmp: Bitmap): Int {
-        var sum = 0L
-        var count = 0
-        val step = 8
-        for (y in 0 until bmp.height step step) {
-            for (x in 0 until bmp.width step step) {
-                val p = bmp.getPixel(x, y)
-                sum += (p shr 16 and 0xFF) + (p shr 8 and 0xFF) + (p and 0xFF)
-                count += 3
-            }
-        }
-        return if (count == 0) 255 else (sum / count).toInt()
-    }
-
-    /** 反色：白↔黑、浅↔深（深底浅字 → 白底黑字，让 ML Kit 识别率恢复） */
-    private fun invertBitmap(bmp: Bitmap) {
-        val pixels = IntArray(bmp.width * bmp.height)
-        bmp.getPixels(pixels, 0, bmp.width, 0, 0, bmp.width, bmp.height)
-        for (i in pixels.indices) {
-            val a = pixels[i] shr 24 and 0xFF
-            val r = 255 - (pixels[i] shr 16 and 0xFF)
-            val g = 255 - (pixels[i] shr 8 and 0xFF)
-            val b = 255 - (pixels[i] and 0xFF)
-            pixels[i] = (a shl 24) or (r shl 16) or (g shl 8) or b
-        }
-        bmp.setPixels(pixels, 0, bmp.width, 0, 0, bmp.width, bmp.height)
-    }
-
     /**
      * 读屏模式独立答案小窗：
      * - 半透明深色底（不刺眼、不挡作答）
