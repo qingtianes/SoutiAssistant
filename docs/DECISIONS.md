@@ -21,5 +21,8 @@ related:
 # Decisions
 
 ## 2026-08-16
-
-- Initialized project memory. No major project, product, technical, process, or content decisions recorded yet.
+- HarmonyOS 第一版主路径：用户主动选择图片 → 官方 OCR → 显示可修改文字 → 搜索本地题库。
+- 暂不增加广泛相册读取权限，优先依靠 PhotoViewPicker 返回的用户授权 URI。
+- 题库存储从 Preferences 大字符串迁移到应用私有 JSON 文件，写入时用临时文件替换保证一致性。
+- 关闭系统备份，避免题库和答案随系统备份离开设备。
+- 悬浮窗保留为实验性功能，不作为第一版主路径。
