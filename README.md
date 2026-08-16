@@ -4,7 +4,7 @@
 
 ## 当前版本
 
-- **当前版本**：`v0.9.0-camera-scan`
+- **当前版本**：`v0.10.0-output-window`
 - **重构版本**：结构拆分，不改变功能行为
 - **当前分支**：`main`（接管工作已合并）
 
@@ -58,7 +58,8 @@ app/src/main/java/com/dingding/souti/
 
 ## 版本历史
 
-- `v0.9.0-camera-scan`：浮窗输出方向切换、实时摄像头扫描搜题
+- `v0.10.0-output-window`：输出结果独立悬浮窗、常驻标题栏、可自由拖动定位
+- `v0.9.0-camera-scan`：实时摄像头扫描搜题
 - `v0.8.0-refactor`：结构重构、包结构拆分、补测试与文档
 - `v0.7-screen-read-stable`：读屏搜题多题模式稳定
 - `v0.6`：版本号与文档同步

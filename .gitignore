@@ -28,3 +28,6 @@ captures/
 # ── 签名文件（安全！）──
 *.jks
 *.keystore
+
+# ── 签名配置（安全！）──
+keystore.properties
