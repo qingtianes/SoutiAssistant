@@ -1434,70 +1434,9 @@ class FloatWindowService : Service() {
     private fun bindScreenReadDragAndResize(
         win: View, titleBar: View, resizeHandle: View, p: WindowManager.LayoutParams
     ) {
-        titleBar.setOnTouchListener(object : View.OnTouchListener {
-            private var initX = 0
-            private var initY = 0
-            private var startTX = 0f
-            private var startTY = 0f
-            override fun onTouch(v: View, event: MotionEvent): Boolean {
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        initX = p.x
-                        initY = p.y
-                        startTX = event.rawX
-                        startTY = event.rawY
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val dx = (event.rawX - startTX).toInt()
-                        val dy = (event.rawY - startTY).toInt()
-                        // ★ gravity = TOP|START（左上角锚定）：p.x=距左边缘距离，p.y=距顶边缘距离
-                        //    手指向右 dx>0 → p.x 增加；手指向下 dy>0 → p.y 增加（最直觉）
-                        p.x = initX + dx
-                        p.y = initY + dy
-                        try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
-                    }
-                }
-                return true
-            }
-        })
-        resizeHandle.setOnTouchListener(object : View.OnTouchListener {
-            private var initX = 0   // ★ DOWN 时记录 p.x（修复：之前漏声明，引用 titleBar 类的 initX 报 unresolved）
-            private var initY = 0   // ★ DOWN 时记录 p.y
-            private var initW = 0
-            private var initH = 0
-            private var startTX = 0f
-            private var startTY = 0f
-            override fun onTouch(v: View, event: MotionEvent): Boolean {
-                when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        initX = p.x   // ★ 记录初始 x
-                        initY = p.y
-                        initW = p.width
-                        initH = p.height
-                        startTX = event.rawX
-                        startTY = event.rawY
-                    }
-                    MotionEvent.ACTION_MOVE -> {
-                        val dx = (event.rawX - startTX).toInt()
-                        val dy = (event.rawY - startTY).toInt()
-                        val newW = (initW + dx).coerceIn(dp(180), dp(500))
-                        val newH = (initH + dy).coerceIn(dp(240), dp(700))
-                        p.width = newW
-                        p.height = newH
-                        // ★★★ 正确 resize（TOP|START 左上角锚定）★★★
-                        //    窗口左上角（p.x, p.y）固定不动，只改 width/height
-                        //    拖 ◢ 向右下 dx>0,dy>0 → 窗口右下扩（◢ 跟手指缩放）
-                        //    拖 ◢ 向左上 dx<0,dy<0 → 窗口右下缩
-                        //    p.x 和 p.y 不变！
-                        try { windowManager.updateViewLayout(win, p) } catch (_: Exception) {}
-                    }
-                }
-                return true
-            }
-        })
+        OverlayDragResizer.bindScreenRead(win, titleBar, resizeHandle, p, windowManager) { dp(it) }
     }
 
-    /** 读屏小窗最小化：缩成屏幕边缘小圆点（可拖动 + 可点恢复），不打扰作答 */
     private fun minimizeScreenReadWindow() {
         val w = screenReadWindow ?: return
         val p = screenReadParams ?: return
