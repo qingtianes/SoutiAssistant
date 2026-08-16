@@ -832,6 +832,7 @@ class FloatWindowService : Service() {
             Log.w("FloatWindow", "startContinuousScan: mediaProjection 为 null！OCR 无法启动")
             return
         }
+        if (screenReadActive) stopScreenRead()
         if (continuousScanning) return
         continuousScanning = true
         // ★ 标记当前模式为浮窗搜题（让主页轮询能区分显示）
@@ -2554,6 +2555,7 @@ class FloatWindowService : Service() {
                     }
                     startActivity(authIntent)
                 } else {
+                    if (screenReadActive) stopScreenRead()
                     // ★ 已授权：按需显示主浮窗（onCreate 不再自动显示，避免读屏模式被影响）
                     if (root == null) showFloatWindow()
                     startContinuousScan()
