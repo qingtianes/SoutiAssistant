@@ -1,0 +1,29 @@
+---
+title: Decisions
+description: Important project, product, technical, process, or content decisions with rationale and consequences.
+doc_type: decision_log
+status: active
+created: 2026-08-16
+updated: 2026-08-16
+tags:
+  - project-memory
+  - decisions
+  - rationale
+audience:
+  - agent
+  - maintainer
+related:
+  - PROJECT_CONTEXT.md
+  - TASKS.md
+  - CHANGELOG_WORK.md
+---
+
+# Decisions
+
+## 2026-08-16
+- 采用只切蛋糕、不改味道的重构原则：每次只拆一个模块，拆前补测试、拆后全量回归。
+- 目标包结构：model / repository / import / ocr / overlay / ui。
+- 浮窗与读屏必须互斥：切换前完整停掉旧模式，再启动新模式，避免共用 MediaProjection 冲突。
+- HarmonyOS 暂缓，先完成 Android；HarmonyOS 可经卓易通兼容安卓程序。
+- 已抽出 OcrQuestionProcessor、QuestionMatcher 两个纯逻辑组件并补测试。
+- 代码精简三件套：ponytail 防过度设计、code-simplification 拆后清晰化、ponytail-review 清点可删项。
