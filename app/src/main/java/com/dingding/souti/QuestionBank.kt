@@ -1,8 +1,6 @@
 package com.dingding.souti
 
 import android.content.Context
-import org.json.JSONArray
-import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,133 +45,35 @@ data class Question(
 )
 
 /**
- * 题库管理器
+ * 题库管理器：对上层提供题库读取、导入、启用和搜索；底层存取委托给 QuestionRepository。
  */
 class QuestionBank(context: Context) {
-    private val prefs = context.getSharedPreferences("souti_bank", Context.MODE_PRIVATE)
+    private val repository = QuestionRepository(context)
 
-    // ===== 题库操作 =====
-    fun loadBanks(): List<Bank> {
-        val raw = prefs.getString("banks", "[]") ?: "[]"
-        val arr = JSONArray(raw)
-        return (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            Bank(
-                id = o.getLong("id"),
-                name = o.getString("name"),
-                sourceFile = o.optString("sourceFile", ""),
-                createdAt = o.optLong("createdAt", 0),
-                sourceModifiedAt = o.optLong("sourceModifiedAt", 0),
-                type = o.optString("type", "manual")
-            )
-        }
-    }
+    fun loadBanks(): List<Bank> = repository.loadBanks()
 
     fun loadBanksByType(type: String): List<Bank> = loadBanks().filter { it.type == type }
 
-    fun deleteBank(id: Long) {
-        saveBanks(loadBanks().filter { it.id != id })
-        saveQuestions(loadAllQuestions().filter { it.bankId != id })
-    }
+    fun deleteBank(id: Long) = repository.deleteBank(id)
 
-    // ===== 题目操作 =====
-    fun loadAllQuestions(): List<Question> {
-        val raw = prefs.getString("questions", "[]") ?: "[]"
-        val arr = JSONArray(raw)
-        return (0 until arr.length()).map { i ->
-            val o = arr.getJSONObject(i)
-            Question(
-                id = o.getLong("id"),
-                bankId = o.optLong("bankId", 0),
-                stem = o.getString("stem"),
-                options = o.optJSONArray("options")?.let { ja ->
-                    (0 until ja.length()).map { ja.getString(it) }
-                } ?: emptyList(),
-                answer = o.optString("answer", ""),
-                source = o.optString("source", "")
-            )
-        }
-    }
+    fun loadAllQuestions(): List<Question> = repository.loadAllQuestions()
 
-    fun loadQuestions(bankId: Long): List<Question> =
-        loadAllQuestions().filter { it.bankId == bankId }
+    fun loadQuestions(bankId: Long): List<Question> = repository.loadQuestions(bankId)
 
-    fun questionCount(bankId: Long): Int = loadQuestions(bankId).size
+    fun questionCount(bankId: Long): Int = repository.questionCount(bankId)
 
-    fun deleteQuestion(id: Long) {
-        saveQuestions(loadAllQuestions().filter { it.id != id })
-    }
+    fun deleteQuestion(id: Long) = repository.deleteQuestion(id)
 
-    // ===== 导入（创建题库 + 添加题目）=====
-    fun importBank(name: String, sourceFile: String, sourceModifiedAt: Long = 0, type: String, questions: List<Question>): Bank {
-        val bankId = System.currentTimeMillis()
-        val bank = Bank(
-            id = bankId,
-            name = name,
-            sourceFile = sourceFile,
-            createdAt = bankId,
-            sourceModifiedAt = sourceModifiedAt,
-            type = type
-        )
-        // 给题目关联 bankId
-        val withBankId = questions.map { it.copy(bankId = bankId) }
-        // 保存
-        saveBanks(loadBanks() + bank)
-        saveQuestions(loadAllQuestions() + withBankId)
-        return bank
-    }
+    fun importBank(name: String, sourceFile: String, sourceModifiedAt: Long = 0, type: String, questions: List<Question>): Bank =
+        repository.importBank(name, sourceFile, sourceModifiedAt, type, questions)
 
-    private fun saveBanks(list: List<Bank>) {
-        val arr = JSONArray()
-        list.forEach { b ->
-            arr.put(JSONObject().apply {
-                put("id", b.id)
-                put("name", b.name)
-                put("sourceFile", b.sourceFile)
-                put("createdAt", b.createdAt)
-                put("sourceModifiedAt", b.sourceModifiedAt)
-                put("type", b.type)
-            })
-        }
-        prefs.edit().putString("banks", arr.toString()).apply()
-    }
+    fun clear() = repository.clear()
 
-    private fun saveQuestions(list: List<Question>) {
-        val arr = JSONArray()
-        list.forEach { q ->
-            val opts = JSONArray()
-            q.options.forEach { opts.put(it) }
-            arr.put(JSONObject().apply {
-                put("id", q.id)
-                put("bankId", q.bankId)
-                put("stem", q.stem)
-                put("options", opts)
-                put("answer", q.answer)
-                put("source", q.source)
-            })
-        }
-        prefs.edit().putString("questions", arr.toString()).apply()
-    }
+    fun getActiveBankIds(): Set<String> = repository.getActiveBankIds()
 
-    fun clear() {
-        prefs.edit().clear().apply()
-    }
+    fun setActiveBankIds(ids: Set<String>) = repository.setActiveBankIds(ids)
 
-    // ===== 激活题库（被勾选用于搜题的）=====
-    fun getActiveBankIds(): Set<String> =
-        prefs.getStringSet("activeBankIds", emptySet()) ?: emptySet()
-
-    fun setActiveBankIds(ids: Set<String>) {
-        // 必须新建 set 再存（SharedPreferences 内部用同一对象，不重建会保存失败）
-        prefs.edit().putStringSet("activeBankIds", HashSet(ids)).apply()
-    }
-
-    fun toggleActive(bankId: Long) {
-        val cur = getActiveBankIds().toMutableSet()
-        val key = bankId.toString()
-        if (cur.contains(key)) cur.remove(key) else cur.add(key)
-        setActiveBankIds(cur)
-    }
+    fun toggleActive(bankId: Long) = repository.toggleActive(bankId)
 
     /**
      * 搜索：在激活题库的所有题目里找匹配的题干
@@ -187,7 +87,7 @@ class QuestionBank(context: Context) {
         val banks = loadBanks().associateBy { it.id }
         return loadAllQuestions()
             .filter { activeIds.contains(it.bankId.toString()) }
-            .map { it to scoreMatch(q, it.stem) }
+            .map { it to QuestionMatcher.score(q, it.stem) }
             .filter { it.second > 0 }
             .sortedByDescending { it.second }
             .take(limit)
@@ -198,53 +98,6 @@ class QuestionBank(context: Context) {
                     score = score
                 )
             }
-    }
-
-    /**
-     * 最长公共子串长度（Longest Common Substring）
-     * OCR 截屏可能比题库题干短（被截断），用 LCS 找最长匹配段
-     */
-    private fun lcsLen(a: String, b: String): Int {
-        if (a.isEmpty() || b.isEmpty()) return 0
-        val m = a.length
-        val n = b.length
-        var maxLen = 0
-        // O(m*n) DP 找最长公共子串（只保留上一行，节省内存）
-        val prev = IntArray(n + 1)
-        val curr = IntArray(n + 1)
-        for (i in 1..m) {
-            for (j in 1..n) {
-                curr[j] = if (a[i - 1] == b[j - 1]) {
-                    (if (j > 1) prev[j - 1] else 0) + 1
-                } else 0
-                if (curr[j] > maxLen) maxLen = curr[j]
-            }
-            // 滚动：curr → prev
-            for (j in 0..n) prev[j] = curr[j]
-        }
-        return maxLen
-    }
-
-    /**
-     * 匹配打分：基于最长公共子串（OCR 截屏可能比题库短，contains 失效）
-     * - 完全包含 +100 分
-     * - LCS 长度加分（每字符 +1）
-     * - LCS 太短（< 3）视为不匹配
-     */
-    private fun scoreMatch(query: String, stem: String): Int {
-        if (query.isBlank() || stem.isBlank()) return 0
-        // ★ 比较前都去掉括号、空格（"下列（ ）是线型橡胶" vs "下列是线型橡胶" → 去括号后一致）
-        //    浮窗 query 是"括号前题干"本来就无括号，去括号后不变，不影响浮窗
-        val q = query.replace(Regex("[（()）]"), "").replace(Regex("\\s+"), "")
-        val s = stem.replace(Regex("[（()）]"), "").replace(Regex("\\s+"), "")
-        if (q.isBlank() || s.isBlank()) return 0
-        var score = 0
-        // 完全包含 → 满分
-        if (q.length >= 4 && (s.contains(q) || q.contains(s))) score += 100
-        // LCS 加分
-        val lcs = lcsLen(q, s)
-        if (lcs >= 3) score += lcs
-        return score
     }
 
     companion object {
