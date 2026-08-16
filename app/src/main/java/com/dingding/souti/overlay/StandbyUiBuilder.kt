@@ -16,8 +16,10 @@ import android.widget.TextView
 interface StandbyUiCallbacks {
     fun isScanning(): Boolean
     fun hasProjection(): Boolean
+    fun isOutputDown(): Boolean
     fun switchToSearch()
     fun toggleOcr()
+    fun toggleOutputDirection()
     fun minimize()
     fun bindResize(resizeHandle: View, recognizeArea: View)
 }
@@ -37,7 +39,15 @@ data class StandbyUiViews(
 object StandbyUiBuilder {
     private const val R_ID_RECOGNIZE = 0x7F010001
 
-    fun build(context: Context, root: ViewGroup, dp: (Int) -> Int, callbacks: StandbyUiCallbacks): StandbyUiViews {
+    fun build(
+        context: Context,
+        root: ViewGroup,
+        dp: (Int) -> Int,
+        callbacks: StandbyUiCallbacks,
+        recognizeWidthPx: Int? = null,
+        recognizeHeightPx: Int? = null
+    ): StandbyUiViews {
+        val outputDown = callbacks.isOutputDown()
         val outer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
@@ -98,6 +108,17 @@ object StandbyUiBuilder {
         }
         topBar.addView(topBtn)
 
+        val directionBtn = TextView(context).apply {
+            text = if (outputDown) "向下显示" else "向上显示"
+            setTextColor(Color.parseColor("#1D9E75"))
+            textSize = 11f
+            setTypeface(typeface, Typeface.BOLD)
+            setBackgroundColor(Color.TRANSPARENT)
+            setPadding(dp(4), dp(2), dp(4), dp(2))
+            setOnClickListener { callbacks.toggleOutputDirection() }
+        }
+        topBar.addView(directionBtn)
+
         val closeBtn = TextView(context).apply {
             text = "—"
             setTextColor(Color.parseColor("#E24B4A"))
@@ -112,17 +133,7 @@ object StandbyUiBuilder {
             layoutParams = LinearLayout.LayoutParams(0, 0, 1f)
         })
         topBar.layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(28))
-        outer.addView(topBar)
         topBar.addView(closeBtn)
-
-        val container = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setBackgroundColor(Color.TRANSPARENT)
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f)
-        }
-        container.addView(View(context).apply {
-            layoutParams = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(0))
-        })
 
         val recognizeArea = FrameLayout(context).apply {
             id = R_ID_RECOGNIZE
@@ -132,8 +143,10 @@ object StandbyUiBuilder {
                 cornerRadius = dp(10).toFloat()
             }
         }
-        recognizeArea.layoutParams = LinearLayout.LayoutParams(dp(352), dp(150)).apply { leftMargin = dp(4) }
-        container.addView(recognizeArea)
+        recognizeArea.layoutParams = LinearLayout.LayoutParams(
+            recognizeWidthPx ?: dp(352),
+            recognizeHeightPx ?: dp(150)
+        ).apply { leftMargin = dp(4) }
 
         val ocrStatusText = TextView(context).apply {
             textSize = 10f
@@ -146,7 +159,6 @@ object StandbyUiBuilder {
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
             )
         }
-        container.addView(ocrStatusText)
 
         val resizeHandle = TextView(context).apply {
             text = "◢"
@@ -199,9 +211,21 @@ object StandbyUiBuilder {
             addView(resultsContainer)
         }
         ocrResults.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(180))
-        container.addView(ocrResults)
 
-        outer.addView(container)
+        if (outputDown) {
+            // 默认：标题栏(1) → 扫描栏/绿框(2) → OCR状态(3) → 输出显示(4)
+            outer.addView(topBar)
+            outer.addView(recognizeArea)
+            outer.addView(ocrStatusText)
+            outer.addView(ocrResults)
+        } else {
+            // 向上显示：输出显示(4) → 标题栏(1) → 扫描栏(2) → OCR状态(3)
+            outer.addView(ocrResults)
+            outer.addView(topBar)
+            outer.addView(recognizeArea)
+            outer.addView(ocrStatusText)
+        }
+
         root.addView(outer)
         return StandbyUiViews(outer, statusDot, statusText, topBtn, closeBtn, redBorder, resultsContainer, ocrResults, ocrStatusText)
     }

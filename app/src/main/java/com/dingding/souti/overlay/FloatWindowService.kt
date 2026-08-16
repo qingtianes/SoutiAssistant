@@ -82,6 +82,8 @@ class FloatWindowService : Service() {
     private var minimizedDot: View? = null
     private var minimizedDotParams: WindowManager.LayoutParams? = null
     private var isMinimized: Boolean = false
+    /** ★ 浮窗输出方向：true=向下显示（默认），false=向上显示（输出区在标题栏上方） */
+    private var outputDown: Boolean = true
     private val bank by lazy { QuestionBank(this) }
 
     // ★★★ 读屏模式（全屏自动识别）状态 ★★★
@@ -139,6 +141,7 @@ class FloatWindowService : Service() {
         try {
             windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
             ocrRecognizeHeight = dp(150)  // 默认 150dp（约 1 道题高）
+            ocrRecognizeWidth = dp(352)  // 默认绿框宽 352dp，与 StandbyUiBuilder 保持一致
             // ★ 启动成功：清空之前的错误信息（防止上次失败残留）
             getSharedPreferences("souti_state", android.content.Context.MODE_PRIVATE)
                 .edit().putBoolean("service_running", true)
@@ -177,11 +180,12 @@ class FloatWindowService : Service() {
         }
         root = r
 
-        // ★ 浮窗默认高度精确 = topBar(28) + topSpace(0) + 绿框(150) + 输出框(180) = 358dp
+        // ★ 默认高度精确 = topBar(28) + topSpace(0) + 绿框(150) + 输出框(180) = 358dp
         //    resize 绿框时由 bindResizeAndDrag 动态同步调 p.height，公式 = 28 + 0 + greenH + 180
         //    renderScanResults 后由 updateFloatHeightAfterRender 调 p.height = 28 + 0 + greenH + contentH
-        // ★ 浮窗默认宽度减小到 dp(360) = 1080px（在 1280px 屏幕里还有 200px 余量，不容易超出）
-        val p = WindowManager.LayoutParams(
+        // ★ 默认宽度减小到 dp(360) = 1080px（在 1280px 屏幕里还有 200px 余量，不容易超出）
+        // ★ 方向切换重建时会先移除旧 root 但保留 params，因此这里复用已有 params，避免丢失位置/缩放/高度。
+        val p = params ?: WindowManager.LayoutParams(
             dp(360), dp(358),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
@@ -192,6 +196,9 @@ class FloatWindowService : Service() {
             x = dp(40)
             y = dp(200)
         }
+        // 复用已有 params 时也要保证待机模式窗口 flags 正确（避免残留搜题模式的 touch-modal flags）
+        p.flags = WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS
         params = p
 
         // 待机模式 UI（OCR 扫描 + 手动搜题备用 全在这里）
@@ -210,12 +217,21 @@ class FloatWindowService : Service() {
         val callbacks = object : StandbyUiCallbacks {
             override fun isScanning() = continuousScanning
             override fun hasProjection() = OcrBridge.mediaProjection != null
+            override fun isOutputDown() = outputDown
             override fun switchToSearch() = switchToSearchMode()
             override fun toggleOcr() = toggleOcrFromStandby()
+            override fun toggleOutputDirection() = this@FloatWindowService.toggleOutputDirection()
             override fun minimize() = minimizeToDot()
             override fun bindResize(resizeHandle: View, recognizeArea: View) = bindResizeAndDrag(resizeHandle, recognizeArea)
         }
-        val built = StandbyUiBuilder.build(this, root, ::dp, callbacks)
+        val built = StandbyUiBuilder.build(
+            this,
+            root,
+            ::dp,
+            callbacks,
+            ocrRecognizeWidth.takeIf { it > 0 },
+            ocrRecognizeHeight.takeIf { it > 0 }
+        )
         statusDot = built.statusDot
         statusText = built.statusText
         ocrTopSwitch = built.topSwitch
@@ -225,6 +241,18 @@ class FloatWindowService : Service() {
         ocrResultScroll = built.resultScroll
         ocrStatusTextView = built.statusView
         return built.rootView
+    }
+
+    /** 切换输出方向：只更新状态并重建待机浮窗；拖拽/缩放参数由 showFloatWindow 复用 params 保留。 */
+    private fun toggleOutputDirection() {
+        outputDown = !outputDown
+        Log.d("FloatWindow", "输出方向切换: ${if (outputDown) "向下显示" else "向上显示"}")
+        val oldRoot = root
+        if (oldRoot != null) {
+            try { windowManager.removeView(oldRoot) } catch (_: Exception) {}
+            root = null
+        }
+        showFloatWindow()
     }
 
     private fun TextView.lpTopEnd() {
@@ -410,6 +438,8 @@ class FloatWindowService : Service() {
     private var statusText: TextView? = null
     /** 最近一次 OCR 识别的原始文本（fallback 显示） */
     private var ocrRawText: String = ""
+    /** 绿框的实际像素宽度（用户拖拽时变化）。注意：不能在字段初始化器里调 dp()，此时 Context 还未就绪 */
+    private var ocrRecognizeWidth: Int = 0  // 默认值在 onCreate 里设置
     /** 绿框的实际像素高度（用户拖拽时变化）。注意：不能在字段初始化器里调 dp()，此时 Context 还未就绪 */
     private var ocrRecognizeHeight: Int = 0  // 默认值在 onCreate 里设置
     /** ★ OCR 序列号：每次启动 OCR 递增，用于丢弃旧异步回调（防止 OCR 错位渲染） */
@@ -1435,8 +1465,10 @@ class FloatWindowService : Service() {
     private fun renderScanResults(results: List<SearchResult>) {
         val resultContainer = ocrResultContainer ?: return
         resultContainer.removeAllViews()
-        // ★ 滚到顶部（让用户看到最新最佳匹配）
-        ocrResultScroll?.post { ocrResultScroll?.scrollTo(0, 0) }
+        // ★ 向下显示时滚到顶部；向上显示时稍后滚到底部，让最高相关度始终可见
+        if (outputDown) {
+            ocrResultScroll?.post { ocrResultScroll?.scrollTo(0, 0) }
+        }
         // ★ 模块3：OCR 识别状态实时显示（独立模块在绿框下方，不随匹配结果滚动）
         ocrStatusTextView?.let { st ->
             if (ocrRawText.isNotBlank()) {
@@ -1458,12 +1490,22 @@ class FloatWindowService : Service() {
             updateFloatHeightAfterRender()
             return
         }
-// 显示最佳候选（前 5 条）
-        results.forEachIndexed { idx, sr ->
+        // 显示最佳候选（前 5 条）。
+        // 向下显示：相关度从高到低，最高在顶部；向上显示：渲染顺序反转，最高在底部。
+        val ordered = if (outputDown) {
+            results.withIndex().toList()
+        } else {
+            results.withIndex().toList().reversed()
+        }
+        ordered.forEach { (idx, sr) ->
             resultContainer.addView(OverlayResultRenderer.buildScanCard(this, sr, idx))
         }
         // ★ 有匹配：浮窗总高根据内容自适应（上限 180dp）
         updateFloatHeightAfterRender()
+        if (outputDown.not()) {
+            // 向上显示：布局完成后再滚到底部，保证最佳匹配可见
+            ocrResultScroll?.post { ocrResultScroll?.fullScroll(View.FOCUS_DOWN) }
+        }
     }
 
     /**
@@ -1604,6 +1646,7 @@ class FloatWindowService : Service() {
                     lp.width = newW
                     lp.height = newH
                     dragArea.layoutParams = lp
+                    ocrRecognizeWidth = newW  // 同步给字段（重建 UI 时保持缩放后的宽度）
                     ocrRecognizeHeight = newH  // 同步给字段（OCR 用）
                     // ★ 浮窗总高动态同步：topBar(28) + topSpace(0) + 绿框 + 模块3 + 输出框(180)
                     //     否则绿框变小后 container 内 LinearLayout 末尾会留白（content 总高 < container 高）
