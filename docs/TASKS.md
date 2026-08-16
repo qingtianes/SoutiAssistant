@@ -25,7 +25,6 @@ related:
 
 ## Current
 - [ ] 整理 Android 包结构
-- [ ] 把 txt/docx/pdf/xls 解析器拆到独立文件
 - [ ] 实现浮窗/读屏互斥状态机
 - [ ] 拆解 FloatWindowService
 - [ ] 拆解 MainActivity
@@ -44,5 +43,6 @@ related:
 - [x] 抽出 QuestionRepository（题库存取）
 - [x] 拆出 BankChunker（Importer 切块核心）
 - [x] 拆出 FileFormatDetector（格式识别）
+- [x] 把 txt/docx/pdf/xls 解析器拆到独立文件
 - [x] 安装 find-skills、project-memory、self-improving-agent
 - [x] ponytail 实体迁移到 E 盘
