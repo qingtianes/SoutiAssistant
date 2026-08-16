@@ -2,7 +2,7 @@
  * 悬浮窗内容页：显示在系统悬浮窗里
  * 功能（MVP）：整体可拖动、显示识别区域框、状态栏
  */
-import { FloatWindowManager } from '../common/FloatWindowManager';
+import { FloatWindowManager } from './FloatWindowManager';
 
 @Entry
 @Component

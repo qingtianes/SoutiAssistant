@@ -44,7 +44,7 @@ export class FloatWindowManager {
       // 3. 放到屏幕右上角
       await win.moveWindowTo(24, 120);
       // 4. 加载悬浮窗页面内容
-      await win.setUIContent('pages/FloatPage');
+      await win.setUIContent('overlay/FloatPage');
       // 5. 显示
       await win.showWindow();
       FloatWindowManager.floatWin = win;

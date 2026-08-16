@@ -6,8 +6,9 @@
 import { common } from '@kit.AbilityKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import promptAction from '@ohos.promptAction';
-import { FloatWindowManager } from '../common/FloatWindowManager';
-import { Bank, Question, QuestionBank, SearchResult } from '../model/QuestionBank';
+import { FloatWindowManager } from '../overlay/FloatWindowManager';
+import { Bank, Question, SearchResult } from '../model/QuestionBankModels';
+import { QuestionBank } from '../repository/QuestionBank';
 import { ImagePickerService } from '../picker/ImagePickerService';
 import { OcrService } from '../ocr/OcrService';
 import { SelectedTextBank, TextBankImportService } from '../importer/TextBankImportService';
