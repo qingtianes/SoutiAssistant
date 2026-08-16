@@ -21,11 +21,11 @@ related:
 # Tasks
 
 ## Recommended Next Action
-- 按安卓路线继续对齐：读屏/扫描搜题；或真机验证当前主流程。
+- 真机测试（放到最后）：验证扫描搜题、设置/使用说明、图片 OCR 主流程；读屏搜题真机验证 window.snapshot 可行性。
 
 ## Current
-- [ ] 真机验证中文 OCR 与相册读取
-- [ ] 对齐安卓读屏/扫描搜题
+- [ ] 真机验证扫描搜题（相机预览 + OCR）
+- [ ] 真机验证读屏搜题技术方案
 
 ## Verification
 - 当前构建成功（未签名 HAP）。

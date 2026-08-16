@@ -23,7 +23,7 @@ related:
 ## Overview
 - 项目：SoutiAssistant HarmonyOS（鸿蒙版搜题助手）。
 - 用途：用户主动选择图片 → 官方 OCR → 本地题库搜索答案。
-- 当前状态：本地题库闭环 + 设置中心 + 使用说明已完成，真机验证未做。
+- 当前状态：本地题库闭环 + 设置中心 + 使用说明 + 扫描搜题已完成，读屏待评估，真机验证未做。
 
 ## Tech Stack
 - ArkTS + Stage 模型。
@@ -35,6 +35,7 @@ related:
 - entry/src/main/ets/ui/Index.ets：主页面（图片 OCR + 题库管理，顶栏含设置/使用说明入口）。
 - entry/src/main/ets/ui/SettingsPage.ets：设置页（版本/使用说明/隐私/清空题库）。
 - entry/src/main/ets/ui/UsageGuidePage.ets：使用说明页。
+- entry/src/main/ets/ui/ScanPage.ets：扫描搜题页（相机预览 + 自动 OCR + 搜索）。
 - entry/src/main/ets/overlay/FloatPage.ets：实验性悬浮窗 Demo。
 - entry/src/main/ets/overlay/FloatWindowManager.ets。
 - entry/src/main/ets/model/QuestionBankModels.ets：题库模型。

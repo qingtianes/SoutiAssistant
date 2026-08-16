@@ -468,6 +468,12 @@ struct Index {
               .backgroundColor('#EEEEEE')
           }
 
+          Button('扫描搜题（摄像头实时识别）')
+            .width('92%')
+            .height(42)
+            .backgroundColor('#2F6FED')
+            .onClick(() => router.pushUrl({ url: 'ui/ScanPage' }))
+
           Row({ space: 10 }) {
             Button(this.selectedImageUri.length > 0 ? '重新选择' : '选择图片')
               .layoutWeight(1)

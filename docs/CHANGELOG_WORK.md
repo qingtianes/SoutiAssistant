@@ -36,3 +36,10 @@ related:
 - Index 顶栏新增“使用说明 / 设置”入口，通过 router 跳转。
 - main_pages.json 注册新页面。
 - 本地构建 hvigorw assembleHap debug 通过（未签名 HAP）。
+
+## 2026-08-17 扫描搜题
+- 新增 ui/ScanPage.ets：相机实时预览 + 自动拍照 OCR + 本地题库搜索 + 暂停/继续。
+- Index 新增“扫描搜题（摄像头实时识别）”入口。
+- main_pages.json 注册 ScanPage。
+- UsageGuidePage 增加扫描搜题说明。
+- 本地构建 hvigorw assembleHap debug 通过（未签名 HAP）。
