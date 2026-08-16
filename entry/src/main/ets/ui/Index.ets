@@ -40,6 +40,11 @@ struct Index {
     this.refreshBankStatus();
   }
 
+  onPageShow(): void {
+    this.floatOn = FloatWindowManager.isShowing();
+    this.refreshBankStatus();
+  }
+
   private async refreshBankStatus(): Promise<void> {
     try {
       const context = getContext(this) as common.UIAbilityContext;
@@ -370,12 +375,12 @@ struct Index {
           .height(32)
           .fontSize(13)
           .backgroundColor('#1D9E75')
-          .onClick(() => router.pushUrl({ url: 'pages/ui/UsageGuidePage' }))
+          .onClick(() => router.pushUrl({ url: 'ui/UsageGuidePage' }))
         Button('设置')
           .height(32)
           .fontSize(13)
           .backgroundColor('#1D9E75')
-          .onClick(() => router.pushUrl({ url: 'pages/ui/SettingsPage' }))
+          .onClick(() => router.pushUrl({ url: 'ui/SettingsPage' }))
       }
       .width('100%')
       .height(56)

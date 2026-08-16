@@ -12,13 +12,13 @@ struct SettingsPage {
   private readonly questionBank: QuestionBank = new QuestionBank();
 
   private goGuide(): void {
-    router.pushUrl({ url: 'pages/ui/UsageGuidePage' });
+    router.pushUrl({ url: 'ui/UsageGuidePage' });
   }
 
   private showPrivacy(): void {
     AlertDialog.show({
       title: '隐私说明',
-      message: '本应用所有 OCR 识别均在本机完成；图片、识别文字与题库只保存在设备本地，不会上传。',
+      message: '本应用所有 OCR 识别均在本机完成，不会上传；识别文字与题库只保存在设备本地；图片由系统相册管理，应用仅读取。',
       confirm: { value: '知道了', action: () => {} }
     });
   }
