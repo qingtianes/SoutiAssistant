@@ -1,6 +1,8 @@
 package com.dingding.souti
 
 import com.dingding.souti.import.Importer
+import com.dingding.souti.ocr.OcrBridge
+import com.dingding.souti.ocr.OcrHelper
 
 import android.content.Context
 import android.content.Intent

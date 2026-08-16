@@ -1,5 +1,8 @@
 package com.dingding.souti
 
+import com.dingding.souti.ocr.OcrBridge
+import com.dingding.souti.ocr.OcrQuestionProcessor
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager

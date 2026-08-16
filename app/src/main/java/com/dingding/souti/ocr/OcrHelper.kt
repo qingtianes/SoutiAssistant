@@ -1,4 +1,4 @@
-package com.dingding.souti
+package com.dingding.souti.ocr
 
 import android.content.Context
 import android.content.Intent

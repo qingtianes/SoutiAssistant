@@ -1,4 +1,4 @@
-package com.dingding.souti
+package com.dingding.souti.ocr
 
 import org.junit.After
 import org.junit.Assert.assertFalse

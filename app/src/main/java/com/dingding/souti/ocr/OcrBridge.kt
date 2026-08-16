@@ -1,4 +1,4 @@
-package com.dingding.souti
+package com.dingding.souti.ocr
 
 import android.graphics.Rect
 import android.media.projection.MediaProjection
