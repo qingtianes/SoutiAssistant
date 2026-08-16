@@ -2001,58 +2001,7 @@ class FloatWindowService : Service() {
                 return@forEachIndexed
             }
             val best = results[0]
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = GradientDrawable().apply {
-                    // ★ 卡片半透明白底：透明窗口底上卡片更醒目
-                    setColor(Color.parseColor("#E6FFFFFF"))
-                    cornerRadius = dp(8).toFloat()
-                }
-                setPadding(dp(8), dp(6), dp(8), dp(6))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(6) }
-            }
-            card.addView(TextView(this).apply {
-                text = title
-                textSize = 10f
-                setTextColor(Color.parseColor("#1D9E75"))  // 白底上用深绿更清晰
-                setTypeface(typeface, Typeface.BOLD)
-            })
-            card.addView(TextView(this).apply {
-                // ★ 完整题干（不再 take(40) 截断，之前导致选项A混进题干、显示不全）
-                text = best.question.stem
-                textSize = 10f
-                setTextColor(Color.parseColor("#222222"))  // 白底上用深灰更清晰
-                if (best.question.options.isNotEmpty() || best.question.answer.isNotEmpty()) {
-                    maxLines = 3
-                    ellipsize = TextUtils.TruncateAt.END
-                }
-            })
-            // ★★ 修复：显示所有选项（之前漏了！导致只看到题干里混入的选项A）
-            best.question.options.forEach { opt ->
-                card.addView(TextView(this).apply {
-                    text = opt
-                    textSize = 10f
-                    setTextColor(Color.parseColor("#555555"))
-                    setPadding(dp(2), dp(0), dp(2), dp(0))
-                })
-            }
-            if (best.question.answer.isNotBlank()) {
-                card.addView(TextView(this).apply {
-                    text = "✔ ${best.question.answer}"
-                    textSize = 13f
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(Color.parseColor("#1D9E75"))  // 答案保持深绿
-                })
-            }
-            card.addView(TextView(this).apply {
-                text = "来源：${best.bankName} · 相关度 ${best.score}"
-                textSize = 9f
-                setTextColor(Color.parseColor("#666666"))  // 白底上用中灰
-            })
-            container.addView(card)
+            container.addView(OverlayResultRenderer.buildScreenReadMultiCard(this, title, best))
         }
     }
 
@@ -2071,51 +2020,7 @@ class FloatWindowService : Service() {
             return
         }
         results.forEachIndexed { idx, sr ->
-            val isBest = idx == 0
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                background = GradientDrawable().apply {
-                    setColor(if (isBest) Color.parseColor("#E8F5E9") else Color.parseColor("#F5F5F5"))
-                    cornerRadius = dp(8).toFloat()
-                }
-                setPadding(dp(8), dp(6), dp(8), dp(6))
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply { bottomMargin = dp(6) }
-            }
-            card.addView(TextView(this).apply {
-                text = (if (isBest) "🎯 " else "${idx + 1}. ") + sr.question.stem
-                textSize = 11f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.parseColor("#222222"))
-                if (sr.question.options.isNotEmpty() || sr.question.answer.isNotEmpty()) {
-                    maxLines = 2
-                    ellipsize = TextUtils.TruncateAt.END
-                }
-            })
-            sr.question.options.forEach { opt ->
-                card.addView(TextView(this).apply {
-                    text = opt
-                    textSize = 10f
-                    setTextColor(Color.parseColor("#555555"))
-                    setPadding(dp(2), dp(0), dp(2), dp(0))
-                })
-            }
-            if (sr.question.answer.isNotBlank()) {
-                card.addView(TextView(this).apply {
-                    text = "✔ ${sr.question.answer}"
-                    textSize = 13f
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(Color.parseColor("#1D9E75"))
-                })
-            }
-            card.addView(TextView(this).apply {
-                text = "来源：${sr.bankName} · 相关度 ${sr.score}"
-                textSize = 9f
-                setTextColor(Color.parseColor("#AAAAAA"))
-            })
-            container.addView(card)
+            container.addView(OverlayResultRenderer.buildScreenReadSingleCard(this, sr, idx))
         }
     }
 
@@ -2148,68 +2053,7 @@ class FloatWindowService : Service() {
         }
 // 显示最佳候选（前 5 条）
         results.forEachIndexed { idx, sr ->
-            val isBest = idx == 0
-            // ★ 结果卡片：不透明背景（清晰可读）+ WRAP_CONTENT 居中
-            val card = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                setBackgroundColor(
-                    if (isBest) Color.parseColor("#E8F5E9")  // 最佳=浅绿
-                    else Color.parseColor("#F5F5F5")          // 次候选=浅灰
-                )
-                setPadding(dp(10), dp(6), dp(10), dp(6))
-                // ★ 卡片 MATCH_PARENT 宽（与 resultContainer 一致），子 View MATCH_PARENT 嵌套 MATCH_PARENT 父不再异常
-                //    删掉 lp.gravity = Gravity.CENTER_HORIZONTAL（旧写法在多次扫描 + 滚动时偶尔导致卡片视觉重叠）
-                layoutParams = LinearLayout.LayoutParams(
-                    LinearLayout.LayoutParams.MATCH_PARENT,
-                    LinearLayout.LayoutParams.WRAP_CONTENT
-                ).apply {
-                    bottomMargin = dp(4)
-                }
-            }
-            card.addView(TextView(this).apply {
-                text = (if (isBest) "🎯 " else "${idx + 1}. ") + sr.question.stem
-                textSize = 11f
-                setTypeface(typeface, Typeface.BOLD)
-                setTextColor(Color.parseColor("#222222"))
-                if (sr.question.options.isEmpty() && sr.question.answer.isEmpty()) {
-                    // ★ 切块模式：整块原样显示（题干+选项+答案都在里面），不截断
-                } else {
-                    maxLines = 2
-                    ellipsize = TextUtils.TruncateAt.END
-                }
-            })
-            // ★ 显示选项（不同来源可能调整选项顺序，保留选项便于核对）
-            sr.question.options.forEach { opt ->
-                card.addView(TextView(this).apply {
-                    text = opt
-                    textSize = 10f
-                    setTextColor(Color.parseColor("#555555"))
-                    val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                    lp.leftMargin = dp(4)
-                    lp.topMargin = dp(1)
-                    layoutParams = lp
-                })
-            }
-            if (sr.question.answer.isNotBlank()) {
-                card.addView(TextView(this).apply {
-                    text = "✔ ${sr.question.answer}"
-                    textSize = 14f
-                    setTypeface(typeface, Typeface.BOLD)
-                    setTextColor(Color.parseColor("#1D9E75"))
-                    val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                    lp.topMargin = dp(4)
-                    layoutParams = lp
-                })
-            }
-            card.addView(TextView(this).apply {
-                text = "来源：${sr.bankName} · 相关度 ${sr.score}"
-                textSize = 10f
-                setTextColor(Color.parseColor("#AAAAAA"))
-                val lp = LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-                lp.topMargin = dp(2)
-                layoutParams = lp
-            })
-            resultContainer.addView(card)
+            resultContainer.addView(OverlayResultRenderer.buildScanCard(this, sr, idx))
         }
         // ★ 有匹配：浮窗总高根据内容自适应（上限 180dp）
         updateFloatHeightAfterRender()
