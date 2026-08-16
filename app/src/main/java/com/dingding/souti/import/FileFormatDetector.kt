@@ -1,4 +1,4 @@
-package com.dingding.souti
+package com.dingding.souti.import
 
 enum class FileFormat { TXT, DOCX, PDF, XLS, XLSX_UNSUPPORTED, UNSUPPORTED }
 

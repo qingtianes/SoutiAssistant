@@ -1,4 +1,4 @@
-package com.dingding.souti
+package com.dingding.souti.import
 
 import org.junit.Assert.assertEquals
 import org.junit.Test
