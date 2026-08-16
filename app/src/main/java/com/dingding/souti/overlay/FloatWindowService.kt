@@ -96,7 +96,6 @@ class FloatWindowService : Service() {
 
     private fun searchLimit(): Int = SettingsStore.resultLimit(this)
 
-    private fun minScore(): Float = SettingsStore.minScore(this)
 
     private fun screenReadIntervalMs(): Long = SettingsStore.ocrThrottleMs(this)
 
@@ -1390,7 +1389,7 @@ class FloatWindowService : Service() {
                 //    通用方案：去掉"开头到第一个《...》结束"，不依赖具体前缀词（依据/根据/在/我司 等都适用）
                 //    "依据《...受限空间...》涂刷具有挥发性..." → "涂刷具有挥发性..."
                 val stem = OcrQuestionProcessor.extractScreenReadStem(seg)
-                val r = if (stem.isNotBlank()) bank.search(stem, limit = searchLimit()).filter { it.score >= minScore() } else emptyList()
+                val r = if (stem.isNotBlank()) bank.search(stem, limit = searchLimit()) else emptyList()
                 val bestScore = r.firstOrNull()?.score ?: 0
                 Log.d("FloatWindow", "多题匹配完成: candidates=${r.size}, score=$bestScore")
                 allResults.add(r)
@@ -1400,7 +1399,7 @@ class FloatWindowService : Service() {
             // ── 单题模式：整段作为查询词（无多个题号结构）──
             screenReadModeText?.text = "· 1题"
             screenReadModeText?.setTextColor(Color.parseColor("#FAC775"))  // 黄（提示只有一题候选）
-            val results = bank.search(cleaned, limit = searchLimit()).filter { it.score >= minScore() }
+            val results = bank.search(cleaned, limit = searchLimit())
             Log.d("FloatWindow", "读屏单题匹配: ${results.size} 条")
             renderScreenReadResults(container, results, isMulti = false)
         }

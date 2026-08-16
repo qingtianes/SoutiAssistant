@@ -135,7 +135,7 @@ fun HomeScreen(onNavigate: (String) -> Unit, isDark: Boolean, onToggleTheme: () 
                         .clickable { onNavigate("help") },
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Filled.Info, contentDescription = "使用说明", tint = glass.textPrimary, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Filled.Info, contentDescription = "使用说明", tint = glass.textPrimary, modifier = Modifier.size(22.dp))
                 }
             }
             Spacer(Modifier.height(16.dp))

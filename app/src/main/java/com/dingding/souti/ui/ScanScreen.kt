@@ -146,8 +146,7 @@ fun ScanScreen(onBack: () -> Unit) {
                             searchJob = scope.launch {
                                 val found = withContext(Dispatchers.IO) {
                                     val limit = SettingsStore.resultLimit(context)
-                                    val minScore = SettingsStore.minScore(context)
-                                    bank.search(text, limit = limit).filter { it.score >= minScore }
+                                    bank.search(text, limit = limit)
                                 }
                                 results = found
                             }

@@ -12,7 +12,6 @@ object SettingsStore {
 
     // 识别与匹配
     private const val KEY_RESULT_LIMIT = "result_limit"
-    private const val KEY_MIN_SCORE = "min_score"
     private const val KEY_OCR_SPEED = "ocr_speed"
 
     // 浮窗显示
@@ -25,7 +24,6 @@ object SettingsStore {
     private const val KEY_VIEWFINDER_HEIGHT = "viewfinder_height"
 
     const val RESULT_LIMIT_DEFAULT = 10
-    const val MIN_SCORE_DEFAULT = 50f
     const val OCR_SPEED_DEFAULT = "normal"
     const val FONT_SCALE_DEFAULT = "medium"
     const val SHOW_META_DEFAULT = true
@@ -44,12 +42,7 @@ object SettingsStore {
         prefs(ctx).edit().putInt(KEY_RESULT_LIMIT, value.coerceIn(1, 50)).apply()
     }
 
-    fun minScore(ctx: Context): Float =
-        prefs(ctx).getFloat(KEY_MIN_SCORE, MIN_SCORE_DEFAULT)
 
-    fun setMinScore(ctx: Context, value: Float) {
-        prefs(ctx).edit().putFloat(KEY_MIN_SCORE, value.coerceIn(0f, 100f)).apply()
-    }
 
     fun ocrSpeed(ctx: Context): String =
         prefs(ctx).getString(KEY_OCR_SPEED, OCR_SPEED_DEFAULT) ?: OCR_SPEED_DEFAULT

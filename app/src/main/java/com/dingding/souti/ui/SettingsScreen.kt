@@ -96,9 +96,6 @@ fun SettingsScreen(onBack: () -> Unit) {
                 ChoiceRow("最多显示结果", listOf("1", "3", "5", "10"), SettingsStore.resultLimit(context).toString()) {
                     SettingsStore.setResultLimit(context, it.toInt())
                 }
-                SliderRow("最低匹配分", SettingsStore.minScore(context), "${SettingsStore.minScore(context).toInt()} 分") {
-                    SettingsStore.setMinScore(context, it)
-                }
                 ChoiceRow("识别速度", listOf("快", "标准", "省电"), speedLabel(SettingsStore.ocrSpeed(context))) {
                     SettingsStore.setOcrSpeed(context, speedKey(it))
                 }
@@ -109,11 +106,11 @@ fun SettingsScreen(onBack: () -> Unit) {
                 ChoiceRow("结果字号", listOf("小", "中", "大"), fontLabel(SettingsStore.fontScale(context))) {
                     SettingsStore.setFontScale(context, fontKey(it))
                 }
-                SwitchRow("显示匹配分与来源", "关闭后只显示题干和答案", SettingsStore.showMeta(context)) {
+                SwitchRow("显示来源与相关度", "关闭后只显示题干和答案", SettingsStore.showMeta(context)) {
                     SettingsStore.setShowMeta(context, it)
                 }
-                ChoiceRow("绿框默认大小", listOf("小", "中", "大"), SettingsStore.frameSize(context)) {
-                    SettingsStore.setFrameSize(context, it)
+                ChoiceRow("绿框默认大小", listOf("小", "中", "大"), frameLabel(SettingsStore.frameSize(context))) {
+                    SettingsStore.setFrameSize(context, frameKey(it))
                 }
             }
 
@@ -130,7 +127,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             GlassSectionTitle("通用 / 关于")
             GlassCard(modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
                 InfoRow("当前版本", appVersion(context))
-                InfoRow("更新日志", "查看 v1.0 新增与修复") { showChangelog = true }
+                InfoRow("更新日志", "查看版本更新内容") { showChangelog = true }
                 InfoRow("隐私说明", "OCR 完全本机处理，不上传任何内容") { showPrivacy = true }
                 InfoRow("意见反馈", "前往 GitHub 提交问题") {
                     context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://github.com/qingtianes/SoutiAssistant/issues")))
@@ -162,8 +159,8 @@ fun SettingsScreen(onBack: () -> Unit) {
     if (showChangelog) {
         AlertDialog(
             onDismissRequest = { showChangelog = false },
-            title = { Text("更新日志（v1.0）") },
-            text = { Text("新增：设置中心、扫描搜题暂停/继续、识别与匹配调节、浮窗显示调节。\n优化：扫描取景框、结果卡片透明化。") },
+            title = { Text("更新日志") },
+            text = { Text("v1.1：玻璃拟态 UI、深浅主题切换、扫描页 A. 角标。\nv1.0：设置中心、扫描暂停/继续、识别与匹配调节、浮窗显示调节。") },
             confirmButton = { TextButton(onClick = { showChangelog = false }) { Text("知道了") } }
         )
     }
@@ -276,3 +273,5 @@ private fun fontKey(label: String) = when (label) { "小" -> "small"; "大" -> "
 private fun fontLabel(key: String) = when (key) { "small" -> "小"; "large" -> "大"; else -> "中" }
 private fun viewfinderKey(label: String) = if (label == "单行") "single" else "double"
 private fun viewfinderLabel(key: String) = if (key == "single") "单行" else "双行"
+private fun frameKey(label: String) = when (label) { "小" -> "small"; "大" -> "large"; else -> "medium" }
+private fun frameLabel(key: String) = when (key) { "small" -> "小"; "large" -> "大"; else -> "中" }

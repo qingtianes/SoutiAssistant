@@ -14,6 +14,7 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import com.dingding.souti.repository.QuestionBank
+import com.dingding.souti.repository.SettingsStore
 
 interface SearchUiCallbacks {
     fun switchToStandby()
@@ -137,7 +138,7 @@ object SearchUiBuilder {
             val q = input.text.toString().trim()
             if (q.isEmpty()) return@setOnClickListener
             resultContainer.removeAllViews()
-            val results = bank.search(q, limit = 5)
+            val results = bank.search(q, limit = SettingsStore.resultLimit(context))
             if (results.isEmpty()) {
                 resultContainer.addView(TextView(context).apply {
                     text = if (bank.getActiveBankIds().isEmpty()) "未勾选题库" else "未找到匹配题目"
