@@ -10,7 +10,6 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import android.widget.TextView
 
 interface StandbyUiCallbacks {
@@ -29,10 +28,9 @@ data class StandbyUiViews(
     val statusDot: View,
     val statusText: TextView,
     val topSwitch: TextView,
+    val directionBtn: TextView,
     val closeBtn: TextView,
     val redBorder: View,
-    val resultContainer: LinearLayout,
-    val resultScroll: ScrollView,
     val statusView: TextView
 )
 
@@ -188,46 +186,21 @@ object StandbyUiBuilder {
         recognizeArea.addView(redBorder)
         redBorder.visibility = View.GONE
 
-        val resultsContainer = LinearLayout(context).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(8), dp(6), dp(8), dp(6))
-            setBackgroundColor(Color.parseColor("#22000000"))
-            clipChildren = true
-            layoutParams = FrameLayout.LayoutParams(
-                FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.WRAP_CONTENT
-            )
-            addView(TextView(context).apply {
-                text = "（OCR 结果将在这里显示）"
-                textSize = 12f
-                setTextColor(Color.parseColor("#888888"))
-                gravity = Gravity.CENTER
-                layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT)
-            })
-        }
-        val ocrResults = ScrollView(context).apply {
-            isVerticalScrollBarEnabled = true
-            scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
-            clipChildren = true
-            visibility = View.GONE
-            addView(resultsContainer)
-        }
-        ocrResults.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(180))
-
-        if (outputDown) {
-            // 默认：标题栏(1) → 扫描栏/绿框(2) → OCR状态(3) → 输出显示(4)
-            outer.addView(topBar)
-            outer.addView(recognizeArea)
-            outer.addView(ocrStatusText)
-            outer.addView(ocrResults)
-        } else {
-            // 向上显示：输出显示(4) → 标题栏(1) → 扫描栏(2) → OCR状态(3)
-            outer.addView(ocrResults)
-            outer.addView(topBar)
-            outer.addView(recognizeArea)
-            outer.addView(ocrStatusText)
-        }
+        // 主浮窗只保留：标题栏、绿框识别区、OCR 状态栏。
+        outer.addView(topBar)
+        outer.addView(recognizeArea)
+        outer.addView(ocrStatusText)
 
         root.addView(outer)
-        return StandbyUiViews(outer, statusDot, statusText, topBtn, closeBtn, redBorder, resultsContainer, ocrResults, ocrStatusText)
+        return StandbyUiViews(
+            outer,
+            statusDot,
+            statusText,
+            topBtn,
+            directionBtn,
+            closeBtn,
+            redBorder,
+            ocrStatusText
+        )
     }
 }
