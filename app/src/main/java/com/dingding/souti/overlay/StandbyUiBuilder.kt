@@ -208,6 +208,7 @@ object StandbyUiBuilder {
             isVerticalScrollBarEnabled = true
             scrollBarStyle = View.SCROLLBARS_INSIDE_OVERLAY
             clipChildren = true
+            visibility = View.GONE
             addView(resultsContainer)
         }
         ocrResults.layoutParams = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(180))

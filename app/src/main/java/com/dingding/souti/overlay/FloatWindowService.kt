@@ -1480,32 +1480,17 @@ class FloatWindowService : Service() {
             }
         }
         if (results.isEmpty()) {
-            resultContainer.addView(TextView(this).apply {
-                text = "未匹配到题库题目"
-                textSize = 12f
-                setTextColor(Color.parseColor("#888888"))
-                gravity = Gravity.CENTER
-            })
-            // ★ 没匹配：浮窗总高根据内容自适应（无结果时缩到最小）
+            // 空结果：完全隐藏输出显示框，把空间还给其他区域
+            ocrResultScroll?.visibility = View.GONE
+            resultContainer.visibility = View.GONE
             updateFloatHeightAfterRender()
             return
         }
-        // 显示最佳候选（前 5 条）。
-        // 向下显示：相关度从高到低，最高在顶部；向上显示：渲染顺序反转，最高在底部。
-        val ordered = if (outputDown) {
-            results.withIndex().toList()
-        } else {
-            results.withIndex().toList().reversed()
-        }
-        ordered.forEach { (idx, sr) ->
-            resultContainer.addView(OverlayResultRenderer.buildScanCard(this, sr, idx))
-        }
-        // ★ 有匹配：浮窗总高根据内容自适应（上限 180dp）
+        // 只显示相关度最高的最佳答案，并按其真实内容高度调整输出框
+        ocrResultScroll?.visibility = View.VISIBLE
+        resultContainer.visibility = View.VISIBLE
+        resultContainer.addView(OverlayResultRenderer.buildScanCard(this, results.first(), 0))
         updateFloatHeightAfterRender()
-        if (outputDown.not()) {
-            // 向上显示：布局完成后再滚到底部，保证最佳匹配可见
-            ocrResultScroll?.post { ocrResultScroll?.fullScroll(View.FOCUS_DOWN) }
-        }
     }
 
     /**
@@ -1519,24 +1504,28 @@ class FloatWindowService : Service() {
         val p = params ?: return
         ocrScroll.post {
             val container = ocrResultContainer ?: return@post
-            // 等布局完成后再测量（post 到下一帧）
-            val contentH = if (container.height > 0) container.height else container.measuredHeight
-            // ★ 关键修复：ScrollView 高 = min(desired, container 剩余)，保证不溢出 container（避免卡片侵入上方区域）
-            val desired = contentH.coerceIn(dp(60), dp(180))
             val greenH = ocrRecognizeHeight
-            // 模块3（OCR 状态）高度：可见才占空间
             val ocrStatusH = if (ocrStatusTextView?.visibility == View.VISIBLE) (ocrStatusTextView?.height ?: 0) else 0
-            val containerRemaining = p.height - dp(28) - dp(0) - greenH - ocrStatusH
-            val scrollH = minOf(desired, containerRemaining).coerceAtLeast(dp(60))
+            val resultH: Int
+            if (ocrScroll.visibility != View.VISIBLE) {
+                resultH = 0
+            } else {
+                val contentH = if (container.height > 0) container.height else container.measuredHeight
+                resultH = contentH.coerceAtLeast(0)
+            }
             val olp = ocrScroll.layoutParams as? LinearLayout.LayoutParams ?: return@post
-            if (olp.height != scrollH) {
-                olp.height = scrollH
+            if (olp.height != resultH) {
+                olp.height = resultH
                 ocrScroll.layoutParams = olp
             }
-            // 浮窗总高同步 = topBar(28) + topSpace(0) + 绿框 + 模块3 + ScrollView(scrollH)
-            val actualH = dp(28) + dp(0) + greenH + ocrStatusH + scrollH
-            if (p.height != actualH) {
-                p.height = actualH
+            val newHeight = dp(28) + greenH + ocrStatusH + resultH
+            if (p.height != newHeight) {
+                val oldHeight = p.height
+                p.height = newHeight
+                if (!outputDown) {
+                    // 向上显示：输出框在顶部，保持底部识别框位置稳定
+                    p.y = (p.y + oldHeight - newHeight).coerceAtLeast(0)
+                }
                 windowManager.updateViewLayout(contentRoot, p)
             }
         }
@@ -1651,12 +1640,16 @@ class FloatWindowService : Service() {
                     // ★ 浮窗总高动态同步：topBar(28) + topSpace(0) + 绿框 + 模块3 + 输出框(180)
                     //     否则绿框变小后 container 内 LinearLayout 末尾会留白（content 总高 < container 高）
                     val ocrStatusH = if (ocrStatusTextView?.visibility == View.VISIBLE) (ocrStatusTextView?.height ?: 0) else 0
-                    val targetH = dp(28) + dp(0) + newH + ocrStatusH + dp(180)
-                    // ★ 浮窗 width 同步：绿框超出浮窗默认宽时浮窗跟着变（让绿框覆盖桌面 OCR 更多内容）
+                    val currentResultH = if (ocrResultScroll?.visibility == View.VISIBLE) (ocrResultScroll?.height ?: 0) else 0
+                    val targetH = dp(28) + newH + ocrStatusH + currentResultH
                     val targetW = maxOf(dp(360), newW + dp(8))
                     if (p.height != targetH || p.width != targetW) {
+                        val oldHeight = p.height
                         p.height = targetH
                         p.width = targetW
+                        if (!outputDown) {
+                            p.y = (p.y + oldHeight - targetH).coerceAtLeast(0)
+                        }
                         windowManager.updateViewLayout(root, p)
                     }
                     true

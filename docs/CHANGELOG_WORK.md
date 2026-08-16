@@ -34,3 +34,10 @@ related:
 - 安装技能：find-skills、project-memory、self-improving-agent。
 - 将 ponytail 五个技能实体从 C 盘 .cc-switch 迁到 E:\Codex\CodexHome\skills，C 盘留 Junction。
 - 初始化项目记忆文件并回填真实项目信息。
+
+## 2026-08-16 浮窗输出框高度修复（本地未推送）
+- 输出框不再设置 180dp 上限，按最高相关度最佳答案的真实内容高度自适应。
+- 空结果时输出框完全隐藏。
+- 缩放绿框时不再把输出框重置为固定 180dp。
+- 向上显示模式下调整窗口 y 锚点，避免识别框漂移导致 OCR 扫错题。
+- 保留备份分支 backup/pre-bugfix-20260816。
