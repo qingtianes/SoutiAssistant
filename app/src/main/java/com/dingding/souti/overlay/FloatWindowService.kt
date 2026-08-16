@@ -144,13 +144,13 @@ class FloatWindowService : Service() {
                 .edit().putBoolean("service_running", true)
                 .putString("last_error", "")
                 .apply()
-            createNotificationChannel()
+            ServiceNotificationHelper.ensureChannel(this)
             // ★ OCR 截屏必须用 mediaProjection 类型（之前 specialUse 抛 SecurityException）
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                startForeground(NOTIFICATION_ID, createNotification(),
+                startForeground(NOTIFICATION_ID, ServiceNotificationHelper.build(this),
                     android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PROJECTION)
             } else {
-                startForeground(NOTIFICATION_ID, createNotification())
+                startForeground(NOTIFICATION_ID, ServiceNotificationHelper.build(this))
             }
             // ★ 不再在 onCreate 自动 showFloatWindow（之前会导致点读屏搜题时主浮窗"闪一下"才被移除）
             //    改为：ACTION_START_SCAN 处理时按需显示主浮窗（用户主动启动浮窗搜题时才显示）
@@ -166,24 +166,6 @@ class FloatWindowService : Service() {
             requestStopEverything()
             return
         }
-    }
-
-    private fun createNotificationChannel() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            val channel = NotificationChannel(
-                CHANNEL_ID, "搜题悬浮窗", NotificationManager.IMPORTANCE_LOW
-            )
-            getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-        }
-    }
-
-    private fun createNotification(): Notification {
-        return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("搜题助手运行中")
-            .setContentText("悬浮窗已开启")
-            .setSmallIcon(android.R.drawable.ic_dialog_info)
-            .setOngoing(true)
-            .build()
     }
 
     private fun dp(v: Int): Int = (v * resources.displayMetrics.density).toInt()
