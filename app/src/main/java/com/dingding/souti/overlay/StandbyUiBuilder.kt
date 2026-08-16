@@ -15,10 +15,8 @@ import android.widget.TextView
 interface StandbyUiCallbacks {
     fun isScanning(): Boolean
     fun hasProjection(): Boolean
-    fun isOutputDown(): Boolean
     fun switchToSearch()
     fun toggleOcr()
-    fun toggleOutputDirection()
     fun minimize()
     fun bindResize(resizeHandle: View, recognizeArea: View)
 }
@@ -28,7 +26,6 @@ data class StandbyUiViews(
     val statusDot: View,
     val statusText: TextView,
     val topSwitch: TextView,
-    val directionBtn: TextView,
     val closeBtn: TextView,
     val redBorder: View,
     val statusView: TextView
@@ -45,7 +42,6 @@ object StandbyUiBuilder {
         recognizeWidthPx: Int? = null,
         recognizeHeightPx: Int? = null
     ): StandbyUiViews {
-        val outputDown = callbacks.isOutputDown()
         val outer = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             layoutParams = LinearLayout.LayoutParams(
@@ -105,17 +101,6 @@ object StandbyUiBuilder {
             setOnClickListener { callbacks.toggleOcr() }
         }
         topBar.addView(topBtn)
-
-        val directionBtn = TextView(context).apply {
-            text = if (outputDown) "向下显示" else "向上显示"
-            setTextColor(Color.parseColor("#1D9E75"))
-            textSize = 11f
-            setTypeface(typeface, Typeface.BOLD)
-            setBackgroundColor(Color.TRANSPARENT)
-            setPadding(dp(4), dp(2), dp(4), dp(2))
-            setOnClickListener { callbacks.toggleOutputDirection() }
-        }
-        topBar.addView(directionBtn)
 
         val closeBtn = TextView(context).apply {
             text = "—"
@@ -197,7 +182,6 @@ object StandbyUiBuilder {
             statusDot,
             statusText,
             topBtn,
-            directionBtn,
             closeBtn,
             redBorder,
             ocrStatusText

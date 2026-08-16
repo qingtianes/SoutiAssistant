@@ -82,17 +82,15 @@ class FloatWindowService : Service() {
     private var minimizedDot: View? = null
     private var minimizedDotParams: WindowManager.LayoutParams? = null
     private var isMinimized: Boolean = false
-    /** ★ 浮窗输出方向：true=向下显示（默认），false=向上显示（输出区在标题栏上方） */
-    private var outputDown: Boolean = true
     /** 独立输出悬浮窗（OCR 结果区，不再塞进主浮窗） */
-    private var outputWindow: ScrollView? = null
+    private var outputWindow: View? = null
     private var outputWindowParams: WindowManager.LayoutParams? = null
     private var outputWindowAdded = false
     private var outputPositionInitialized = false
     private var outputManuallyDragged = false
     private var outputHasContent = false
-    /** 标题栏方向按钮引用（切换方向时只更新文字和输出窗位置，不重建主浮窗） */
-    private var directionBtnRef: TextView? = null
+    /** 输出窗标题栏高度（整窗高度 = 标题栏 + 最佳答案卡片内容高度） */
+    private var outputTitleBarHeightPx: Int = 0
     private val bank by lazy { QuestionBank(this) }
 
     // ★★★ 读屏模式（全屏自动识别）状态 ★★★
@@ -190,7 +188,7 @@ class FloatWindowService : Service() {
         root = r
 
         // ★ 主浮窗现在只包含：标题栏(28) + 绿框识别区 + OCR 状态栏。
-        //    输出区已拆为独立悬浮窗，由 renderScanResults 按需显示。
+        //    输出区已拆为独立悬浮窗，与主浮窗同时显示。
         // ★ 默认宽度减小到 dp(360) = 1080px（在 1280px 屏幕里还有 200px 余量，不容易超出）
         val p = params ?: WindowManager.LayoutParams(
             dp(360), dp(28) + ocrRecognizeHeight,
@@ -215,6 +213,8 @@ class FloatWindowService : Service() {
         searchUi.visibility = View.GONE
 
         windowManager.addView(r, p)
+        // ★ 输出窗与主浮窗同时显示，空结果时保留“暂无输出”占位。
+        showOutputWindow()
     }
 
     /** 待机模式主浮窗：只包含标题栏、绿框识别区和 OCR 状态栏。
@@ -224,10 +224,8 @@ class FloatWindowService : Service() {
         val callbacks = object : StandbyUiCallbacks {
             override fun isScanning() = continuousScanning
             override fun hasProjection() = OcrBridge.mediaProjection != null
-            override fun isOutputDown() = outputDown
             override fun switchToSearch() = switchToSearchMode()
             override fun toggleOcr() = toggleOcrFromStandby()
-            override fun toggleOutputDirection() = this@FloatWindowService.toggleOutputDirection()
             override fun minimize() = minimizeToDot()
             override fun bindResize(resizeHandle: View, recognizeArea: View) = bindResizeAndDrag(resizeHandle, recognizeArea)
         }
@@ -242,22 +240,11 @@ class FloatWindowService : Service() {
         statusDot = built.statusDot
         statusText = built.statusText
         ocrTopSwitch = built.topSwitch
-        directionBtnRef = built.directionBtn
         closeBtnRef = built.closeBtn
         redBorderView = built.redBorder
         ocrStatusTextView = built.statusView
         // 输出结果容器由 ensureOutputWindow() 创建，不属于主浮窗
         return built.rootView
-    }
-
-    /** 切换输出方向：只更新按钮文字并重定位独立输出窗，不重建主浮窗。 */
-    private fun toggleOutputDirection() {
-        outputDown = !outputDown
-        Log.d("FloatWindow", "输出方向切换: ${if (outputDown) "向下显示" else "向上显示"}")
-        directionBtnRef?.text = if (outputDown) "向下显示" else "向上显示"
-        if (outputHasContent) {
-            repositionOutputWindow()
-        }
     }
 
     private fun TextView.lpTopEnd() {
@@ -673,7 +660,7 @@ class FloatWindowService : Service() {
         searchUi.visibility = View.GONE
         try {
             windowManager.addView(r, p)
-            showOutputWindowIfContent()
+            showOutputWindow()
             Log.d("FloatWindow", "主浮窗已恢复（读屏模式结束）")
         } catch (e: Exception) {
             Log.e("FloatWindow", "主浮窗恢复失败: ${e.message}")
@@ -1474,10 +1461,7 @@ class FloatWindowService : Service() {
         ensureOutputWindow()
         val resultContainer = ocrResultContainer ?: return
         resultContainer.removeAllViews()
-        // ★ 向下显示时滚到顶部；向上显示时稍后滚到底部，让最高相关度始终可见
-        if (outputDown) {
-            ocrResultScroll?.post { ocrResultScroll?.scrollTo(0, 0) }
-        }
+        ocrResultScroll?.post { ocrResultScroll?.scrollTo(0, 0) }
         // ★ 模块3：OCR 识别状态实时显示（独立模块在绿框下方，不随匹配结果滚动）
         ocrStatusTextView?.let { st ->
             if (ocrRawText.isNotBlank()) {
@@ -1489,12 +1473,29 @@ class FloatWindowService : Service() {
             }
         }
         if (results.isEmpty()) {
-            // 空结果：完全隐藏独立输出窗
+            // 空结果：输出窗仍保持显示，内容区显示占位。
             outputHasContent = false
-            ocrResultScroll?.visibility = View.GONE
-            resultContainer.visibility = View.GONE
+            resultContainer.addView(TextView(this).apply {
+                text = "暂无输出"
+                textSize = 12f
+                setTextColor(Color.parseColor("#888888"))
+                gravity = Gravity.CENTER
+                setPadding(0, dp(6), 0, dp(6))
+                layoutParams = LinearLayout.LayoutParams(
+                    LinearLayout.LayoutParams.MATCH_PARENT,
+                    LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            })
+            ocrResultScroll?.visibility = View.VISIBLE
+            resultContainer.visibility = View.VISIBLE
+            val lp = outputWindowParams ?: return
+            lp.width = params?.width ?: lp.width
+            lp.height = outputTitleBarHeightPx + dp(40)
+            if (!outputPositionInitialized) {
+                positionOutputWindowRelativeToMain()
+            }
+            addOrUpdateOutputWindow()
             syncMainWindowHeightAfterStatusChange()
-            hideOutputWindow()
             return
         }
         syncMainWindowHeightAfterStatusChange()
@@ -1502,30 +1503,17 @@ class FloatWindowService : Service() {
         outputHasContent = true
         ocrResultScroll?.visibility = View.VISIBLE
         resultContainer.visibility = View.VISIBLE
-        val ordered = if (outputDown) results.withIndex().toList() else results.withIndex().toList().reversed()
-        ordered.forEach { (idx, sr) ->
+        results.forEachIndexed { idx, sr ->
             resultContainer.addView(OverlayResultRenderer.buildScanCard(this, sr, idx))
         }
         updateOutputWindowAfterRender()
-        if (!outputDown) {
-            ocrResultScroll?.post { ocrResultScroll?.fullScroll(View.FOCUS_DOWN) }
-        }
     }
 
-    /**
-     * 根据 OCR 结果容器内容高度自适应调 ScrollView 高度（上限 180dp，下限 60dp）
-     * 同时调 WindowManager 浮窗总高 = topBar(30) + topSpace(36) + 绿框 + 输出框
-     * → 没/少内容时浮窗缩到最小省屏，多内容时 180dp 上限 + 内部滚动
-     */
+    /** 主浮窗高度随绿框和 OCR 状态栏自适应。 */
     private fun applyFloatWindowHeight(newHeight: Int) {
         val p = params ?: return
         if (p.height == newHeight) return
-        val oldHeight = p.height
         p.height = newHeight
-        if (!outputDown) {
-            // 向上显示：底部固定，顶部向上伸缩，1/2/3 不漂移
-            p.y = (p.y + oldHeight - newHeight).coerceAtLeast(0)
-        }
         root?.let { windowManager.updateViewLayout(it, p) }
     }
 
@@ -1553,16 +1541,17 @@ class FloatWindowService : Service() {
     /** 主浮窗自身高度：标题栏 + 绿框 + OCR 状态栏。 */
     private fun mainWindowHeightPx(): Int = dp(28) + ocrRecognizeHeight + ocrStatusHeightPx()
 
-    /** 首次渲染结果时创建独立输出窗内容和 LayoutParams。 */
+    /** 首次显示输出窗前创建独立输出窗内容和 LayoutParams。 */
     private fun ensureOutputWindow() {
         if (outputWindow != null) return
         val built = OutputWindowBuilder.build(this, ::dp)
         outputWindow = built.rootView
+        outputTitleBarHeightPx = built.titleBarHeightPx
         ocrResultContainer = built.resultContainer
-        ocrResultScroll = built.rootView
-        attachOutputDragListener(built.rootView)
+        ocrResultScroll = built.scrollView
+        attachOutputDragListener(built.titleBar)
         outputWindowParams = WindowManager.LayoutParams(
-            params?.width ?: dp(360), dp(60),
+            params?.width ?: dp(360), outputTitleBarHeightPx + dp(40),
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
@@ -1574,14 +1563,15 @@ class FloatWindowService : Service() {
         }
     }
 
-    /** 输出窗整窗拖动。用户手动拖动后标记 outputManuallyDragged，后续渲染不再自动跟随主浮窗。 */
-    private fun attachOutputDragListener(view: View) {
+    /** 输出窗标题栏拖动。用户手动拖动后标记 outputManuallyDragged，后续渲染不再自动跟随主浮窗。 */
+    private fun attachOutputDragListener(dragHandle: View) {
         var initialX = 0
         var initialY = 0
         var initialTouchX = 0f
         var initialTouchY = 0f
-        view.setOnTouchListener { _, event ->
+        dragHandle.setOnTouchListener { _, event ->
             val lp = outputWindowParams ?: return@setOnTouchListener false
+            val windowView = outputWindow ?: return@setOnTouchListener false
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     initialX = lp.x
@@ -1595,11 +1585,12 @@ class FloatWindowService : Service() {
                     val dy = (event.rawY - initialTouchY).toInt()
                     if (dx != 0 || dy != 0) {
                         outputManuallyDragged = true
+                        outputPositionInitialized = true
                     }
                     lp.x = initialX + dx
                     lp.y = initialY + dy
                     if (outputWindowAdded) {
-                        try { windowManager.updateViewLayout(view, lp) } catch (_: Exception) {}
+                        try { windowManager.updateViewLayout(windowView, lp) } catch (_: Exception) {}
                     }
                     true
                 }
@@ -1631,17 +1622,19 @@ class FloatWindowService : Service() {
         lp.gravity = Gravity.TOP or Gravity.START
         lp.width = main.width
         lp.x = main.x
-        lp.y = if (outputDown) main.y + main.height else main.y - lp.height
+        lp.y = main.y + main.height
         outputPositionInitialized = true
         outputManuallyDragged = false
     }
 
-    private fun showOutputWindowIfContent() {
-        if (!outputHasContent) return
+    /** 输出窗在服务运行时始终显示；空结果时保留标题栏和空占位。 */
+    private fun showOutputWindow() {
         ensureOutputWindow()
         if (!outputPositionInitialized) {
             positionOutputWindowRelativeToMain()
         }
+        val lp = outputWindowParams ?: return
+        lp.width = params?.width ?: lp.width
         addOrUpdateOutputWindow()
     }
 
@@ -1651,12 +1644,6 @@ class FloatWindowService : Service() {
             try { windowManager.removeView(outputWindow) } catch (_: Exception) {}
             outputWindowAdded = false
         }
-    }
-
-    private fun repositionOutputWindow() {
-        ensureOutputWindow()
-        positionOutputWindowRelativeToMain()
-        addOrUpdateOutputWindow()
     }
 
     private fun updateOutputWindowAfterRender() {
@@ -1679,7 +1666,7 @@ class FloatWindowService : Service() {
             val resultH = (
                 firstCard.measuredHeight + bottomMargin + container.paddingTop + container.paddingBottom
             ).coerceAtLeast(dp(40))
-            lp.height = resultH
+            lp.height = outputTitleBarHeightPx + resultH
             if (!outputPositionInitialized) {
                 positionOutputWindowRelativeToMain()
             }
@@ -1728,7 +1715,6 @@ class FloatWindowService : Service() {
         val r = root as? ViewGroup ?: return
         r.getChildAt(0).visibility = View.GONE
         r.getChildAt(1).visibility = View.VISIBLE
-        hideOutputWindow()
         // 搜题模式需要接收输入
         params?.flags = WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
                 WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
@@ -1744,7 +1730,7 @@ class FloatWindowService : Service() {
         // ★ 恢复主浮窗自身高度（输出窗已独立，不再占 180dp）
         params?.height = mainWindowHeightPx()
         windowManager.updateViewLayout(r, params)
-        showOutputWindowIfContent()
+        showOutputWindow()
     }
 
     private fun bindResizeAndDrag(resizeHandle: View, dragArea: View) {
@@ -1871,7 +1857,7 @@ class FloatWindowService : Service() {
         outputPositionInitialized = false
         outputManuallyDragged = false
         outputHasContent = false
-        directionBtnRef = null
+        outputTitleBarHeightPx = 0
         ocrResultContainer = null
         ocrResultScroll = null
         screenReadParams = null
@@ -2212,7 +2198,7 @@ class FloatWindowService : Service() {
             Log.e("FloatWindow", "恢复浮窗失败", e)
         }
         isMinimized = false
-        showOutputWindowIfContent()
+        showOutputWindow()
         Log.d("FloatWindow", "恢复：重建完整浮窗")
     }
 }
