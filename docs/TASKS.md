@@ -21,17 +21,20 @@ related:
 # Tasks
 
 ## Recommended Next Action
-- 整理 Android 包结构（model/repository/import/ocr/overlay/ui），先搬文件、保编译和测试通过。
+- 继续把 ocr / overlay / ui / model-repository 相关文件移入对应包，每搬一组就回归一次。
 
 ## Current
-- [ ] 整理 Android 包结构
+- [ ] 把 OcrBridge / OcrHelper / OcrQuestionProcessor 移入 ocr 包
+- [ ] 把 FloatWindowService 移入 overlay 包
+- [ ] 把 MainActivity 移入 ui 包
+- [ ] 把模型、题库与匹配移入 model / repository 包
 - [ ] 实现浮窗/读屏互斥状态机
 - [ ] 拆解 FloatWindowService
 - [ ] 拆解 MainActivity
 
 ## Verification
 - 37 项单测通过；Lint 0 error；assembleDebug 成功（JDK 21）。
-- 工作区待提交：QuestionMatcher、QuestionRepository 及测试。
+- 当前工作区干净，所有已完成的切片均已提交。
 
 ## Blockers
 - 无。
@@ -44,5 +47,6 @@ related:
 - [x] 拆出 BankChunker（Importer 切块核心）
 - [x] 拆出 FileFormatDetector（格式识别）
 - [x] 把 txt/docx/pdf/xls 解析器拆到独立文件
+- [x] 把 import 相关文件移入 import 包
 - [x] 安装 find-skills、project-memory、self-improving-agent
 - [x] ponytail 实体迁移到 E 盘
