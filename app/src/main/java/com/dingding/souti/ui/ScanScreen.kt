@@ -9,6 +9,8 @@ import android.os.SystemClock
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.AspectRatio
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageAnalysis
@@ -16,7 +18,9 @@ import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.view.PreviewView
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -28,6 +32,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -43,11 +48,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,6 +71,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dingding.souti.model.SearchResult
 import com.dingding.souti.repository.QuestionBank
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.chinese.ChineseTextRecognizerOptions
 import java.util.concurrent.Executors
@@ -68,9 +80,14 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private const val VF_WIDTH_FRACTION = 0.88f
+private const val VF_HEIGHT_FRACTION = 0.40f
+private const val VF_CORNER_DP = 12f
+private const val ZOOM_STEP = 1.4f
+
 /**
  * 扫描搜题页：
- * - 上 50%：CameraX PreviewView 实时摄像头预览
+ * - 上 50%：CameraX 实时预览，中间是横向取景框（只识别框内题目）
  * - 下 50%：ML Kit 中文 OCR 持续识别 + QuestionBank.search 实时匹配结果
  */
 @Composable
@@ -90,6 +107,8 @@ fun ScanScreen(onBack: () -> Unit) {
     var recognizedText by remember { mutableStateOf("") }
     var results by remember { mutableStateOf<List<SearchResult>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
+    var zoomRatio by remember { mutableStateOf(1f) }
+    var controller by remember { mutableStateOf<CameraScanController?>(null) }
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -98,29 +117,41 @@ fun ScanScreen(onBack: () -> Unit) {
     }
 
     // 有权限且页面在组合中时，绑定/解绑 CameraX。页面返回时自动解绑，不影响悬浮窗/读屏。
-    DisposableEffect(lifecycleOwner, hasCameraPermission, previewView) {
+    DisposableEffect(lifecycleOwner, hasCameraPermission) {
         if (hasCameraPermission) {
-            val controller = CameraScanController(
+            val camera = CameraScanController(
                 context = context.applicationContext,
                 lifecycleOwner = lifecycleOwner,
                 previewView = previewView,
+                onZoomChanged = { zoomRatio = it },
                 onText = { text ->
                     recognizedText = text
                     searchJob?.cancel()
-                    searchJob = scope.launch {
-                        val found = withContext(Dispatchers.IO) {
-                            bank.search(text, limit = 10)
+                    if (text.isBlank()) {
+                        results = emptyList()
+                    } else {
+                        searchJob = scope.launch {
+                            val found = withContext(Dispatchers.IO) {
+                                bank.search(text, limit = 10)
+                            }
+                            results = found
                         }
-                        results = found
                     }
                 }
             )
-            controller.start()
-            onDispose { controller.stop() }
+            controller = camera
+            camera.start()
+            onDispose {
+                camera.stop()
+                if (controller === camera) controller = null
+            }
         } else {
             onDispose { }
         }
     }
+
+    val currentZoom by rememberUpdatedState(zoomRatio)
+    val currentController by rememberUpdatedState(controller)
 
     Column(
         modifier = Modifier
@@ -161,6 +192,13 @@ fun ScanScreen(onBack: () -> Unit) {
                     .weight(1f)
                     .background(Color.Black)
                     .clip(RoundedCornerShape(8.dp))
+                    .pointerInput(hasCameraPermission) {
+                        if (hasCameraPermission) {
+                            detectTransformGestures { _, _, zoom, _ ->
+                                currentController?.setZoomRatio(currentZoom * zoom)
+                            }
+                        }
+                    }
             ) {
                 if (hasCameraPermission) {
                     AndroidView(
@@ -168,6 +206,15 @@ fun ScanScreen(onBack: () -> Unit) {
                         modifier = Modifier
                             .fillMaxSize()
                             .clip(RoundedCornerShape(8.dp))
+                    )
+                    ViewfinderOverlay(modifier = Modifier.fillMaxSize())
+                    ZoomControls(
+                        zoomRatio = zoomRatio,
+                        onZoomIn = { controller?.setZoomRatio(zoomRatio * ZOOM_STEP) },
+                        onZoomOut = { controller?.setZoomRatio(zoomRatio / ZOOM_STEP) },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(10.dp)
                     )
                 } else {
                     Column(
@@ -224,7 +271,7 @@ fun ScanScreen(onBack: () -> Unit) {
                     ) {
                         Text(
                             text = when {
-                                recognizedText.isBlank() -> "将题目对准摄像头，识别到文字后自动搜索"
+                                recognizedText.isBlank() -> "将题目对准取景框，识别到文字后自动搜索"
                                 else -> "未找到匹配题目\n识别文字：${recognizedText.take(80)}"
                             },
                             fontSize = 13.sp,
@@ -240,6 +287,68 @@ fun ScanScreen(onBack: () -> Unit) {
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ViewfinderOverlay(modifier: Modifier = Modifier) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val vfW = w * VF_WIDTH_FRACTION
+        val vfH = h * VF_HEIGHT_FRACTION
+        val left = (w - vfW) / 2f
+        val top = (h - vfH) / 2f
+        val right = left + vfW
+        val bottom = top + vfH
+        val dim = Color(0x66000000)
+
+        drawRect(dim, topLeft = Offset(0f, 0f), size = Size(w, top))
+        drawRect(dim, topLeft = Offset(0f, bottom), size = Size(w, h - bottom))
+        drawRect(dim, topLeft = Offset(0f, top), size = Size(left, vfH))
+        drawRect(dim, topLeft = Offset(right, top), size = Size(w - right, vfH))
+
+        drawRoundRect(
+            color = Color(0xFF00E676),
+            topLeft = Offset(left, top),
+            size = Size(vfW, vfH),
+            cornerRadius = CornerRadius(VF_CORNER_DP.dp.toPx(), VF_CORNER_DP.dp.toPx()),
+            style = Stroke(width = 3.dp.toPx())
+        )
+    }
+}
+
+@Composable
+private fun ZoomControls(
+    zoomRatio: Float,
+    onZoomIn: () -> Unit,
+    onZoomOut: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        IconButton(
+            onClick = onZoomOut,
+            modifier = Modifier.background(Color(0x88000000), CircleShape)
+        ) {
+            Text(text = "−", color = Color.White, fontSize = 18.sp)
+        }
+        Text(
+            text = "%.1fx".format(zoomRatio),
+            color = Color.White,
+            fontSize = 13.sp,
+            modifier = Modifier
+                .background(Color(0x88000000), RoundedCornerShape(8.dp))
+                .padding(horizontal = 8.dp, vertical = 4.dp)
+        )
+        IconButton(
+            onClick = onZoomIn,
+            modifier = Modifier.background(Color(0x88000000), CircleShape)
+        ) {
+            Text(text = "+", color = Color.White, fontSize = 18.sp)
         }
     }
 }
@@ -304,16 +413,19 @@ private fun checkCameraPermission(context: Context): Boolean =
 
 /**
  * CameraX 绑定控制器：负责 Preview + ImageAnalysis，节流约 1 秒执行中文 OCR。
+ * 只识别取景框内的文字，支持双指缩放和按钮缩放。
  */
 private class CameraScanController(
     private val context: Context,
     private val lifecycleOwner: LifecycleOwner,
     private val previewView: PreviewView,
+    private val onZoomChanged: (Float) -> Unit,
     private val onText: (String) -> Unit
 ) {
     companion object {
         private const val TAG = "ScanCamera"
         private const val OCR_THROTTLE_MS = 1000L
+        private const val DEFAULT_MAX_ZOOM = 4f
     }
 
     private val cameraExecutor = Executors.newSingleThreadExecutor()
@@ -323,9 +435,25 @@ private class CameraScanController(
     }
 
     private var cameraProvider: ProcessCameraProvider? = null
+    private var camera: Camera? = null
+    private var maxZoomRatio = DEFAULT_MAX_ZOOM
+    private var currentZoom = 1f
+    private var pendingZoom: Float? = null
     private var started = false
     private var lastAnalyzedAt = 0L
     private var analyzing = false
+
+    fun setZoomRatio(ratio: Float) {
+        val clamped = ratio.coerceIn(1f, maxZoomRatio)
+        currentZoom = clamped
+        val boundCamera = camera
+        if (boundCamera == null) {
+            pendingZoom = clamped
+        } else {
+            boundCamera.cameraControl.setZoomRatio(clamped)
+        }
+        mainHandler.post { onZoomChanged(clamped) }
+    }
 
     fun start() {
         if (started) return
@@ -339,11 +467,13 @@ private class CameraScanController(
                 cameraProvider = provider
 
                 val preview = Preview.Builder()
+                    .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                     .build()
                     .also { it.setSurfaceProvider(previewView.surfaceProvider) }
 
                 val imageAnalysis = ImageAnalysis.Builder()
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+                    .setTargetAspectRatio(AspectRatio.RATIO_16_9)
                     .build()
                     .also { analysis ->
                         analysis.setAnalyzer(cameraExecutor) { imageProxy ->
@@ -352,12 +482,21 @@ private class CameraScanController(
                     }
 
                 provider.unbindAll()
-                provider.bindToLifecycle(
+                val boundCamera = provider.bindToLifecycle(
                     lifecycleOwner,
                     CameraSelector.DEFAULT_BACK_CAMERA,
                     preview,
                     imageAnalysis
                 )
+                camera = boundCamera
+
+                val zoomState = boundCamera.cameraInfo.zoomState.value
+                if (zoomState != null) {
+                    maxZoomRatio = zoomState.maxZoomRatio.coerceAtLeast(1f)
+                }
+                val target = pendingZoom ?: 1f
+                pendingZoom = null
+                setZoomRatio(target)
             } catch (e: Exception) {
                 Log.w(TAG, "绑定摄像头失败: ${e.message}")
             }
@@ -370,6 +509,7 @@ private class CameraScanController(
             cameraProvider?.unbindAll()
         } catch (_: Exception) {
         }
+        camera = null
         cameraProvider = null
         cameraExecutor.shutdown()
     }
@@ -398,10 +538,8 @@ private class CameraScanController(
 
         recognizer.process(inputImage)
             .addOnSuccessListener { result ->
-                val text = result.text.trim()
-                if (text.isNotEmpty()) {
-                    mainHandler.post { onText(text) }
-                }
+                val text = filterToViewfinder(result, imageProxy)
+                mainHandler.post { onText(text) }
             }
             .addOnFailureListener { e ->
                 Log.w(TAG, "OCR 识别失败: ${e.message}")
@@ -410,5 +548,45 @@ private class CameraScanController(
                 analyzing = false
                 imageProxy.close()
             }
+    }
+
+    private fun filterToViewfinder(result: Text, imageProxy: ImageProxy): String {
+        val viewW = previewView.width
+        val viewH = previewView.height
+        if (viewW <= 0 || viewH <= 0) return result.text.trim()
+
+        val rotation = imageProxy.imageInfo.rotationDegrees
+        val crop = imageProxy.cropRect
+        if (crop.width() <= 0 || crop.height() <= 0) return result.text.trim()
+
+        val rotW = if (rotation % 180 == 0) crop.width().toFloat() else crop.height().toFloat()
+        val rotH = if (rotation % 180 == 0) crop.height().toFloat() else crop.width().toFloat()
+
+        val scale = minOf(viewW.toFloat() / rotW, viewH.toFloat() / rotH)
+        val offX = (viewW - rotW * scale) / 2f
+        val offY = (viewH - rotH * scale) / 2f
+
+        val vfLeft = viewW * (1f - VF_WIDTH_FRACTION) / 2f
+        val vfRight = viewW * (1f + VF_WIDTH_FRACTION) / 2f
+        val vfTop = viewH * (1f - VF_HEIGHT_FRACTION) / 2f
+        val vfBottom = viewH * (1f + VF_HEIGHT_FRACTION) / 2f
+
+        val imgVfLeft = (vfLeft - offX) / scale
+        val imgVfRight = (vfRight - offX) / scale
+        val imgVfTop = (vfTop - offY) / scale
+        val imgVfBottom = (vfBottom - offY) / scale
+
+        return result.textBlocks
+            .asSequence()
+            .filter { it.boundingBox != null }
+            .filter { block ->
+                val box = block.boundingBox!!
+                val cx = box.centerX().toFloat()
+                val cy = box.centerY().toFloat()
+                cx >= imgVfLeft && cx <= imgVfRight && cy >= imgVfTop && cy <= imgVfBottom
+            }
+            .sortedBy { it.boundingBox!!.top }
+            .joinToString("\n") { it.text }
+            .trim()
     }
 }
