@@ -32,7 +32,7 @@ related:
 - [x] Finish initial cross-check of the parity matrix against Android source and UI states.
 - [x] Update README, usage guide, and changelog to match H0.
 - [x] Run H0 build and deterministic checks.
-- [ ] Configure/confirm Harmony Git remote; commit and push H0 to `main`.
+- [x] Configure/confirm canonical remote and push H0 to `origin/main`.
 
 ## Next milestones
 
@@ -63,3 +63,4 @@ related:
 
 - Real-device OCR, camera, screen capture, and signing are intentionally deferred to the final user-acceptance phase.
 - Harmony now uses the root Android repository remote: `origin` (`qingtianes/SoutiAssistant`).
+

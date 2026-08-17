@@ -57,3 +57,9 @@ A long conversation is not project memory. If the baseline, decisions, task stat
 - Imported the Harmony project and its history into E:\SoutiAssistant\HarmonyOS using Git subtree.
 - Updated canonical paths, project skill, root README, root AGENTS, and root project memory.
 - Android tests/Lint/debug build passed; Harmony HAP build passed with --no-daemon after correcting the Java PATH.
+
+## 2026-08-18 — H0 pushed
+
+- Pushed unified-repository H0 checkpoint to GitHub origin/main (2b561ca).
+- Git proxy configured for this repository: http://127.0.0.1:7990.
+

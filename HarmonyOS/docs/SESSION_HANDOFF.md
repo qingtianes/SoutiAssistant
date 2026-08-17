@@ -45,14 +45,21 @@ Recover H0 and then fully replicate Android v1.0.2 into HarmonyOS. Do not reduce
 - Harmony H0 history is imported into the root repository under `HarmonyOS/`.
 - Canonical remote: root repository `origin` (`qingtianes/SoutiAssistant`).
 
-## Next exact actions
+## H0 status
 
-1. Review the unified-repository diff and memory path updates.
-2. Android full regression already passed: unit tests, Lint, and debug assemble.
-3. Harmony HAP build already passed with `--no-daemon`, explicit SDK, Java, and PATH.
-4. Commit the canonical-path and root-memory updates on root `main`.
-5. Push root `main` to `origin`.
-6. Begin H1 from `HarmonyOS/docs/PARITY_MATRIX.md`: page structure and UI skeleton first.
+H0 is complete and pushed:
+
+- Root commit: `2b561ca` (unified repository layout), pushed to GitHub `origin/main`.
+- Canonical paths and project memory updated.
+- Android full regression passed; Harmony HAP build passed with `--no-daemon`.
+
+## Next exact actions (H1)
+
+1. Read `E:\SoutiAssistant\HarmonyOS\docs\PARITY_MATRIX.md` page/navigation contracts.
+2. Create Harmony page structure matching Android screens: home, import, overview, bank detail, scan (disabled), settings, help, image OCR placeholder.
+3. Recreate Android UI components (cards, sections, conditional states, circular help button) in ArkTS.
+4. Build with the documented `--no-daemon` command; no camera tests.
+5. Update memory/docs, commit, and push `main`.
 
 ## Prohibited
 
@@ -60,3 +67,5 @@ Recover H0 and then fully replicate Android v1.0.2 into HarmonyOS. Do not reduce
 - Do not use coordinate-click/screenshot loops.
 - Do not mark any parity item complete from build success alone.
 - Do not create a branch or release.
+
+
