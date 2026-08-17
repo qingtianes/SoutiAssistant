@@ -62,6 +62,4 @@ related:
 ## Blockers
 
 - Real-device OCR, camera, screen capture, and signing are intentionally deferred to the final user-acceptance phase.
-- The Harmony repository currently has no configured Git remote; configure it before the first H0 push, without guessing a URL.
-
-
+- Harmony now uses the root Android repository remote: `origin` (`qingtianes/SoutiAssistant`).

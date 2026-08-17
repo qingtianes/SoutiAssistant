@@ -21,3 +21,9 @@ docs/*.md memory files use Project Memory Metadata v1 frontmatter; preserve it w
 - 每次改动后运行 testDebugUnitTest、lintDebug、assembleDebug。
 
 - Agent 技能分工见 docs/AGENT_SKILLS.md。
+
+## HarmonyOS 子目录
+- Canonical path: E:\SoutiAssistant\HarmonyOS.
+- Android v1.0.2+ is the product baseline; read HarmonyOS/docs/PARITY_MATRIX.md before changing Harmony code.
+- Use E:\Codex\CodexHome\skills\souti-parity-development\SKILL.md.
+- Keep Android and Harmony memory, changelog, and task state accurate; important validated milestones are committed and pushed to main.

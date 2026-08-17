@@ -25,8 +25,8 @@ related:
 ## Overview
 - 项目：SoutiAssistant（搜题助手）Android 客户端。
 - 用途：浮窗搜题、读屏搜题、摄像头扫描搜题，实时 OCR 题目并在已勾选本地题库中匹配答案输出。
-- 当前版本：v1.0.2（已发布 GitHub Release）。
-- 当前状态：Android v1.0 已完成并发布；下一步是 WorkBuddy 重做 UI、之后启动鸿蒙同步。
+- Android 当前版本：v1.1.1（已发布 GitHub Release）。
+- 当前状态：Android 主线已完成并发布；HarmonyOS 已作为本仓库 `HarmonyOS/` 子目录进入完整复刻阶段。
 
 ## Tech Stack
 - Kotlin + Jetpack Compose（Material3，主页）+ 传统 View（悬浮窗）。
@@ -42,6 +42,7 @@ related:
 - `com.dingding.souti.ocr`：OcrBridge、OcrHelper、OcrQuestionProcessor。
 - `com.dingding.souti.overlay`：FloatWindowService 及拆出的组件。
 - `com.dingding.souti.ui`：MainActivity、HomeScreen、ImportScreen、BankScreens、ScanScreen、SettingsScreen、UsageGuideScreen。
+- `HarmonyOS/`：鸿蒙独立 Stage/ArkTS 工程；其 `docs/PARITY_MATRIX.md` 是 Android→Harmony 复刻权威矩阵。
 
 ## FloatWindowService 已拆组件
 - FrameImageUtils、OverlayResultRenderer、ServiceNotificationHelper、OverlayDragResizer、ProjectionVirtualDisplayFactory、SearchUiBuilder、ScreenReadWindowBuilder、StandbyUiBuilder、OutputWindowBuilder。
@@ -63,4 +64,5 @@ related:
 - 浮窗与读屏互斥，启动一个前必须先停另一个。
 - OCR、截屏、摄像头帧仅本机处理，不上传；allowBackup=false。
 - 未经用户明确允许，不 push。
+- 鸿蒙重要里程碑在构建/验证/文档审查通过后提交并 push 到本仓库 main。
 - WorkBuddy 重做 UI 时只改 `com.dingding.souti.ui` 的排版/样式，不改业务逻辑与 overlay 行为。

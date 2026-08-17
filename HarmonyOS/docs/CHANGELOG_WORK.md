@@ -45,9 +45,15 @@ related:
 
 A long conversation is not project memory. If the baseline, decisions, task state, and handoff are not updated in the repository, a model/context change can silently redefine the product. H0 exists to prevent a repeat.
 
-## H0 local checkpoint
+## H0 checkpoint history
 
-- Created local commit 402a4e8 after memory, parity matrix, camera freeze, README, and build checks.
-- Harmony Git remote remains unset; push is intentionally pending remote confirmation.
+- Created the Harmony H0 checkpoint after memory, parity matrix, camera freeze, README, and build checks.
+- The H0 history was later imported into the root repository under `HarmonyOS/`.
 
 
+
+## 2026-08-17 — unified repository
+
+- Imported the Harmony project and its history into E:\SoutiAssistant\HarmonyOS using Git subtree.
+- Updated canonical paths, project skill, root README, root AGENTS, and root project memory.
+- Android tests/Lint/debug build passed; Harmony HAP build passed with --no-daemon after correcting the Java PATH.

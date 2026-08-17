@@ -7,7 +7,7 @@
 ## 当前事实
 
 - Android 基线：`E:\SoutiAssistant`，v1.0.2。
-- Harmony 工作区：`E:\SoutiAssistant_Harmony`。
+- Harmony 工作区：`E:\SoutiAssistant\HarmonyOS`。
 - TXT 题库导入/启停/删除/持久化/手动匹配已有模拟器证据，但只是完整题库系统的一部分。
 - 智能导入、题库总览、题库详情、完整设置、浮窗搜题、读屏搜题和 Android UI 仍未复刻完成。
 - 摄像头扫描已按用户决定冻结到最后阶段；不得自动申请权限或自动采集。

@@ -29,8 +29,8 @@ Recover H0 and then fully replicate Android v1.0.2 into HarmonyOS. Do not reduce
 ## Current files
 
 - Android baseline: `E:\SoutiAssistant`
-- Harmony workspace: `E:\SoutiAssistant_Harmony`
-- Parity matrix: `E:\SoutiAssistant_Harmony\docs\PARITY_MATRIX.md`
+- Harmony workspace: `E:\SoutiAssistant\HarmonyOS`
+- Parity matrix: `E:\SoutiAssistant\HarmonyOS\docs\PARITY_MATRIX.md`
 - Project skill: `E:\Codex\CodexHome\skills\souti-parity-development\SKILL.md`
 
 ## Completed in this checkpoint
@@ -40,15 +40,19 @@ Recover H0 and then fully replicate Android v1.0.2 into HarmonyOS. Do not reduce
 - Disabled camera entry/registration; no camera test is authorized.
 - Removed ordinary float-window permission and static page registration.
 
-## H0 local checkpoint\n\n- Local commit: `402a4e8 docs: restore Android-to-Harmony parity baseline`.\n- Remote: unset; do not guess the URL.\n\n## Next exact actions
+## Unified repository checkpoint
 
-1. Audit inventory returned; integrate its findings into `docs/PARITY_MATRIX.md`.
-2. Re-read the matrix and memory files, then review `git diff --check`.
-3. README and usage guide now describe the full parity target and frozen camera.
-4. H0 build already passed with constrained JVM; rerun only if code changes.
-5. Review `git diff`, confirm no secrets and no debug artifacts.
-6. Configure the correct Harmony Git remote only after verifying the intended URL; do not guess.
-7. Commit H0 locally; push only after the intended remote URL is confirmed.
+- Harmony H0 history is imported into the root repository under `HarmonyOS/`.
+- Canonical remote: root repository `origin` (`qingtianes/SoutiAssistant`).
+
+## Next exact actions
+
+1. Review the unified-repository diff and memory path updates.
+2. Android full regression already passed: unit tests, Lint, and debug assemble.
+3. Harmony HAP build already passed with `--no-daemon`, explicit SDK, Java, and PATH.
+4. Commit the canonical-path and root-memory updates on root `main`.
+5. Push root `main` to `origin`.
+6. Begin H1 from `HarmonyOS/docs/PARITY_MATRIX.md`: page structure and UI skeleton first.
 
 ## Prohibited
 
@@ -56,6 +60,3 @@ Recover H0 and then fully replicate Android v1.0.2 into HarmonyOS. Do not reduce
 - Do not use coordinate-click/screenshot loops.
 - Do not mark any parity item complete from build success alone.
 - Do not create a branch or release.
-
-
-

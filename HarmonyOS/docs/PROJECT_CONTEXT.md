@@ -27,7 +27,7 @@ related:
 
 - Project: SoutiAssistant HarmonyOS native client.
 - Android baseline: `E:\SoutiAssistant`, Android v1.0.2 current `main` code and released behavior.
-- Harmony workspace: `E:\SoutiAssistant_Harmony`.
+- Harmony workspace: `E:\SoutiAssistant\HarmonyOS`.
 - Non-negotiable objective: fully replicate Android structure, features, navigation, interaction states, data behavior, and UI. HarmonyOS is not an MVP, redesign, or feature subset.
 - Platform differences may change implementation technology, not product scope. Unsupported capability must keep its product entry and show a truthful state until evidence proves availability.
 - Final real-device acceptance belongs to the user.
@@ -62,10 +62,11 @@ related:
 - Build with constrained JVM memory to avoid Windows page-file failure:
 
 ```powershell
+$env:DEVECO_SDK_HOME='E:\Huawei\DevEco Studio\sdk'
 $env:JAVA_TOOL_OPTIONS='-Xms128m -Xmx1536m'
 $env:JAVA_HOME='E:\Huawei\DevEco Studio\jbr'
-$env:PATH='E:\Huawei\DevEco Studio\tools\node;' + $env:PATH
-& 'E:\Huawei\DevEco Studio\tools\hvigor\bin\hvigorw.bat' assembleHap --mode module -p product=default
+$env:PATH='E:\Huawei\DevEco Studio\jbr\bin;E:\Huawei\DevEco Studio\tools\node;' + $env:PATH
+& 'E:\Huawei\DevEco Studio\tools\hvigor\bin\hvigorw.bat' --no-daemon assembleHap --mode module -p product=default
 ```
 
 ## Required workflow

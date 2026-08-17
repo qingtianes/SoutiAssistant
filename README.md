@@ -109,3 +109,42 @@ app/src/main/java/com/dingding/souti/
 - `v0.6`：版本号与文档同步
 - `v0.5`：浮窗 4 模块结构重构、老板键
 - 接管重构：包结构拆分，功能行为不变，补充测试与文档
+
+## HarmonyOS 子项目
+
+HarmonyOS 版本已经纳入当前 Android 主仓库：
+
+```text
+HarmonyOS/
+```
+
+目标不是另一个简化应用，而是以 Android v1.0.2 为基准完整复刻：
+
+- 首页与导航；
+- 智能导入与题库总览；
+- 图片 OCR；
+- 浮窗搜题；
+- 读屏搜题；
+- 摄像头扫描搜题；
+- 设置与使用说明；
+- UI、交互状态和本地数据行为。
+
+HarmonyOS 的当前状态、缺口、决策和交接入口：
+
+```text
+HarmonyOS/docs/PROJECT_CONTEXT.md
+HarmonyOS/docs/PARITY_MATRIX.md
+HarmonyOS/docs/DECISIONS.md
+HarmonyOS/docs/TASKS.md
+HarmonyOS/docs/SESSION_HANDOFF.md
+```
+
+构建鸿蒙模块：
+
+```powershell
+$env:DEVECO_SDK_HOME='E:\Huawei\DevEco Studio\sdk'
+$env:JAVA_TOOL_OPTIONS='-Xms128m -Xmx1536m'
+$env:JAVA_HOME='E:\Huawei\DevEco Studio\jbr'
+$env:PATH='E:\Huawei\DevEco Studio\jbr\bin;E:\Huawei\DevEco Studio\tools\node;' + $env:PATH
+& 'E:\Huawei\DevEco Studio\tools\hvigor\bin\hvigorw.bat' --no-daemon assembleHap --mode module -p product=default
+```

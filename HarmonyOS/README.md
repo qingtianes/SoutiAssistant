@@ -9,10 +9,10 @@
 权威目标和缺口以以下文件为准：
 
 ```text
-E:\SoutiAssistant_Harmony\docs\PARITY_MATRIX.md
-E:\SoutiAssistant_Harmony\docs\DECISIONS.md
-E:\SoutiAssistant_Harmony\docs\TASKS.md
-E:\SoutiAssistant_Harmony\docs\SESSION_HANDOFF.md
+E:\SoutiAssistant\HarmonyOS\docs\PARITY_MATRIX.md
+E:\SoutiAssistant\HarmonyOS\docs\DECISIONS.md
+E:\SoutiAssistant\HarmonyOS\docs\TASKS.md
+E:\SoutiAssistant\HarmonyOS\docs\SESSION_HANDOFF.md
 ```
 
 ## Android 基准必须完整复刻的模块
@@ -50,10 +50,11 @@ E:\SoutiAssistant_Harmony\docs\SESSION_HANDOFF.md
 ## 构建
 
 ```powershell
+$env:DEVECO_SDK_HOME='E:\Huawei\DevEco Studio\sdk'
 $env:JAVA_TOOL_OPTIONS='-Xms128m -Xmx1536m'
 $env:JAVA_HOME='E:\Huawei\DevEco Studio\jbr'
-$env:PATH='E:\Huawei\DevEco Studio\tools\node;' + $env:PATH
-& 'E:\Huawei\DevEco Studio\tools\hvigor\bin\hvigorw.bat' assembleHap --mode module -p product=default
+$env:PATH='E:\Huawei\DevEco Studio\jbr\bin;E:\Huawei\DevEco Studio\tools\node;' + $env:PATH
+& 'E:\Huawei\DevEco Studio\tools\hvigor\bin\hvigorw.bat' --no-daemon assembleHap --mode module -p product=default
 ```
 
 发布模式同样必须通过构建，但签名和最终发布要等用户真机验收后再决定。
