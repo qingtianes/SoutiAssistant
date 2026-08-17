@@ -2,8 +2,6 @@
   "src": [
     "ui/Index",
     "ui/SettingsPage",
-    "ui/UsageGuidePage",
-    "ui/ScanPage",
-    "overlay/FloatPage"
+    "ui/UsageGuidePage"
   ]
 }

@@ -18,7 +18,7 @@ struct SettingsPage {
   private showPrivacy(): void {
     AlertDialog.show({
       title: '隐私说明',
-      message: '本应用所有 OCR 识别均在本机完成，不会上传；识别文字与题库只保存在设备本地；图片由系统相册管理，应用仅读取。',
+      message: '本应用所有 OCR 识别均在本机完成，不会上传；识别文字与题库只保存在设备本地；相册图片仅读取；摄像头扫描图片会临时写入应用私有目录，并在本次识别处理后删除。',
       confirm: { value: '知道了', action: () => {} }
     });
   }

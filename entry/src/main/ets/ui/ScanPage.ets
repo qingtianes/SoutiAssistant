@@ -18,8 +18,12 @@ struct ScanPage {
   @State status: string = '正在准备摄像头…';
   @State results: SearchResult[] = [];
   @State busy: boolean = false;
+  @State cameraStarting: boolean = false;
 
   private camera: CameraHelper | null = null;
+  // 通过控制器取得真实 surfaceId。不要依赖 onLoad 的可选 context：
+  // 当前鸿蒙模拟器会在未配置 controller 时传入 undefined。
+  private readonly xComponentController: XComponentController = new XComponentController();
   private readonly questionBank: QuestionBank = new QuestionBank();
 
   aboutToAppear(): void {
@@ -30,28 +34,48 @@ struct ScanPage {
     const context = getContext(this) as common.UIAbilityContext;
     this.hasPermission = await CameraHelper.requestCameraPermission(context);
     this.status = this.hasPermission ? '摄像头已授权，准备预览…' : '未获得摄像头权限';
+    if (this.hasPermission && this.surfaceId.length > 0) {
+      await this.startCamera();
+    }
   }
 
-  onXComponentLoad(context: object): void {
-    const xc = context as Record<string, Object>;
-    this.surfaceId = xc['surfaceId'] as string;
+  onXComponentLoad(_context?: object): void {
+    try {
+      this.surfaceId = this.xComponentController.getXComponentSurfaceId();
+    } catch (err) {
+      this.surfaceId = '';
+      this.status = '摄像头预览组件未就绪，请返回后重试';
+      return;
+    }
+    if (this.surfaceId.length === 0) {
+      this.status = '未获取到摄像头预览画面，请返回后重试';
+      return;
+    }
     this.startCamera();
   }
 
   async startCamera(): Promise<void> {
-    if (this.surfaceId.length === 0 || !this.hasPermission || this.cameraReady) {
+    if (this.surfaceId.length === 0 || !this.hasPermission || this.cameraReady || this.cameraStarting) {
       return;
     }
+    this.cameraStarting = true;
     const ctx = getContext(this) as common.UIAbilityContext;
     this.camera = new CameraHelper(ctx);
-    this.camera.onPhotoTaken = (path: string) => this.handlePhoto(path);
-    const ok = await this.camera.initAndStartPreview(this.surfaceId);
-    if (ok) {
-      this.cameraReady = true;
-      this.status = '摄像头已启动，正在实时识别…';
-      this.camera.startAutoCapture(1500);
-    } else {
-      this.status = '摄像头启动失败，请检查权限或设备支持';
+    this.camera.onPhotoTaken = async (path: string): Promise<void> => {
+      await this.handlePhoto(path);
+    };
+    try {
+      const ok = await this.camera.initAndStartPreview(this.surfaceId);
+      if (ok) {
+        this.cameraReady = true;
+        this.status = '摄像头已启动，正在实时识别…';
+        this.camera.startAutoCapture(1500);
+      } else {
+        this.camera = null;
+        this.status = '摄像头启动失败：模拟器或当前设备可能不支持相机采集';
+      }
+    } finally {
+      this.cameraStarting = false;
     }
   }
 
@@ -78,13 +102,25 @@ struct ScanPage {
       }
     } catch (err) {
       const e = err as BusinessError;
-      this.status = `识别失败：${e.message ?? JSON.stringify(err)}`;
+      const message = e.message ?? JSON.stringify(err);
+      if (message.includes('未安装系统文字识别能力')) {
+        // OCR 模块不可用时停止定时拍照，保留预览和错误说明，避免无休止失败。
+        this.camera?.stopAutoCapture();
+        this.status = message;
+      } else {
+        this.status = `识别失败：${message}`;
+      }
     } finally {
       this.busy = false;
     }
   }
 
   togglePause(): void {
+    if (!this.cameraReady || this.camera === null) {
+      this.status = '摄像头尚未启动，无法暂停或继续';
+      promptAction.showToast({ message: '请先等待摄像头启动' });
+      return;
+    }
     this.paused = !this.paused;
     if (this.paused) {
       this.camera?.stopAutoCapture();
@@ -95,10 +131,13 @@ struct ScanPage {
     }
   }
 
-  releaseCamera(): void {
-    this.camera?.stopAutoCapture();
-    this.camera?.release();
+  async releaseCamera(): Promise<void> {
+    const camera = this.camera;
+    this.camera = null;
+    camera?.stopAutoCapture();
+    await camera?.release();
     this.cameraReady = false;
+    this.cameraStarting = false;
   }
 
   aboutToDisappear(): void {
@@ -144,7 +183,6 @@ struct ScanPage {
           .fontSize(13)
           .backgroundColor('#1D9E75')
           .onClick(() => {
-            this.releaseCamera();
             router.back();
           })
       }
@@ -155,7 +193,12 @@ struct ScanPage {
       .backgroundColor('#1D9E75')
 
       Stack({ alignContent: Alignment.TopStart }) {
-        XComponent({ id: 'scanCameraSurface', type: 'surface', libraryname: '' })
+        XComponent({
+          id: 'scanCameraSurface',
+          type: 'surface',
+          libraryname: '',
+          controller: this.xComponentController
+        })
           .width('100%')
           .height(320)
           .onLoad((context: object) => this.onXComponentLoad(context))
@@ -184,6 +227,7 @@ struct ScanPage {
           .layoutWeight(1)
           .height(40)
           .backgroundColor('#777777')
+          .enabled(!this.cameraStarting)
           .onClick(() => this.requestPermission())
       }
       .width('92%')

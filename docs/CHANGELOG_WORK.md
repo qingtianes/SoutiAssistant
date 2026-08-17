@@ -1,45 +1,53 @@
 ---
 title: Work Changelog
-description: Dated notes on changed files, deliverables, tooling, checks, and verification.
+description: Dated notes on changes, evidence, tooling, and durable lessons.
 doc_type: work_log
 status: active
 created: 2026-08-16
-updated: 2026-08-16
+updated: 2026-08-17
 tags:
   - project-memory
   - changelog
-  - work-log
-  - verification
+  - parity
+  - lessons
 audience:
   - agent
   - maintainer
 related:
   - PROJECT_CONTEXT.md
+  - PARITY_MATRIX.md
   - DECISIONS.md
   - TASKS.md
 ---
 
 # Work Changelog
 
-## 2026-08-16
-- 建立 HarmonyOS 接管基线与标签。
-- 实现图片选择 + 官方 OCR + 本地题库搜索页面。
-- 实现 TXT 题库导入、启用/删除管理。
-- 题库存储迁移到应用私有 JSON 文件。
-- 关闭系统备份保护题库隐私。
-- 验证 Hvigor 构建成功（未签名 HAP）。
-- 建立 HarmonyOS 项目记忆。
+## 2026-08-16 to 2026-08-17 — historical partial Harmony work
 
-## 2026-08-17
-- 新增 SettingsPage.ets：设置页（当前版本、使用说明入口、隐私说明、清空本地题库）。
-- 新增 UsageGuidePage.ets：使用说明页。
-- Index 顶栏新增“使用说明 / 设置”入口，通过 router 跳转。
-- main_pages.json 注册新页面。
-- 本地构建 hvigorw assembleHap debug 通过（未签名 HAP）。
+- Implemented partial image OCR page, TXT import, private JSON storage, local matching, minimal settings/guide, and a camera prototype.
+- Verified TXT import, enable/disable/delete, restart persistence, and manual local search in the emulator.
+- Discovered the emulator camera was mapped to the host webcam; camera auto-capture was a privacy/process failure and is now frozen.
+- Discovered the emulator lacks the native system OCR module; code now reports a device capability limitation instead of crashing.
+- Discovered normal float-window creation is denied; static overlay code is not a completed product feature.
 
-## 2026-08-17 扫描搜题
-- 新增 ui/ScanPage.ets：相机实时预览 + 自动拍照 OCR + 本地题库搜索 + 暂停/继续。
-- Index 新增“扫描搜题（摄像头实时识别）”入口。
-- main_pages.json 注册 ScanPage。
-- UsageGuidePage 增加扫描搜题说明。
-- 本地构建 hvigorw assembleHap debug 通过（未签名 HAP）。
+## 2026-08-17 — H0 parity baseline recovery
+
+- Restored the actual product objective: full Android v1.0.2 replication, not an image-OCR/TXT MVP.
+- Added `docs/PARITY_MATRIX.md` as the authoritative Android→Harmony gap/evidence tracker.
+- Rewrote `docs/PROJECT_CONTEXT.md`, `docs/DECISIONS.md`, and `docs/TASKS.md` to survive context/model/token changes.
+- Created `E:\Codex\CodexHome\skills\souti-parity-development\SKILL.md` with mandatory baseline, memory, testing, camera-safety, and milestone rules.
+- Disabled the camera scan entry and removed `ScanPage` from the registered page list while camera work is frozen.
+- Removed ordinary-build `SYSTEM_FLOAT_WINDOW` declaration and unregistered the static overlay product page.
+- Cleared generated debug screenshots/layout dumps and JVM crash logs from the workspace.
+- Release-mode HAP build passed before and after the H0 changes.
+
+## Durable lesson
+
+A long conversation is not project memory. If the baseline, decisions, task state, and handoff are not updated in the repository, a model/context change can silently redefine the product. H0 exists to prevent a repeat.
+
+## H0 local checkpoint
+
+- Created local commit 402a4e8 after memory, parity matrix, camera freeze, README, and build checks.
+- Harmony Git remote remains unset; push is intentionally pending remote confirmation.
+
+

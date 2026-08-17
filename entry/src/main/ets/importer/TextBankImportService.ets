@@ -1,6 +1,7 @@
 import { fileIo, picker } from '@kit.CoreFileKit';
 import { BusinessError } from '@kit.BasicServicesKit';
 import { common } from '@kit.AbilityKit';
+import { util } from '@kit.ArkTS';
 
 /**
  * 用户选择的 TXT 题库文件。
@@ -50,39 +51,58 @@ export class TextBankImportService {
     }
 
     const uri: string = selectedUris[0];
-    const name: string = TextBankImportService.extractFileName(uri);
-    if (!TextBankImportService.isTxtFile(name)) {
-      throw new Error('只能选择 .txt 格式的题库文件。');
-    }
-
-    let fileStat: fileIo.Stat;
+    let selectedFile: fileIo.File | undefined = undefined;
     try {
-      fileStat = await fileIo.stat(uri);
+      // Picker 返回的是 URI，不应直接按应用沙箱路径调用 readText。
+      selectedFile = await fileIo.open(uri, fileIo.OpenMode.READ_ONLY);
     } catch (error) {
-      throw new Error('无法读取所选 TXT 文件的信息，请确认文件仍可访问。');
+      throw new Error('无法打开所选 TXT 文件，请确认文件仍可访问。');
     }
 
-    if (fileStat.size > TextBankImportService.MAX_FILE_BYTES) {
-      throw new Error('TXT 题库文件不能超过 2 MB。');
-    }
-
-    let content: string;
     try {
-      content = await fileIo.readText(uri, { encoding: 'utf-8' });
-    } catch (error) {
-      throw new Error('读取 TXT 题库失败，请确认文件编码为 UTF-8 且文件仍可访问。');
-    }
+      const name = selectedFile.name.trim().length > 0 ?
+        selectedFile.name : TextBankImportService.extractFileName(uri);
+      if (name.includes('.') && !TextBankImportService.isTxtFile(name)) {
+        throw new Error('只能选择 .txt 格式的题库文件。');
+      }
 
-    if (content.trim().length === 0) {
-      throw new Error('所选 TXT 题库内容为空，请选择包含题目的文件。');
-    }
+      let fileStat: fileIo.Stat;
+      try {
+        fileStat = await fileIo.stat(selectedFile.fd);
+      } catch (error) {
+        throw new Error('无法读取所选 TXT 文件的信息，请确认文件仍可访问。');
+      }
 
-    return new SelectedTextBank(
-      uri,
-      name,
-      content,
-      fileStat.mtime * 1000
-    );
+      if (fileStat.size > TextBankImportService.MAX_FILE_BYTES) {
+        throw new Error('TXT 题库文件不能超过 2 MB。');
+      }
+
+      let content: string;
+      try {
+        const bytes: ArrayBuffer = new ArrayBuffer(fileStat.size);
+        const bytesRead: number = await fileIo.read(selectedFile.fd, bytes);
+        if (bytesRead !== fileStat.size) {
+          throw new Error(`题库文件读取不完整：预期 ${fileStat.size} 字节，实际 ${bytesRead} 字节。`);
+        }
+        const decoder: util.TextDecoder = new util.TextDecoder('utf-8', { fatal: true });
+        content = decoder.decode(new Uint8Array(bytes));
+      } catch (error) {
+        throw new Error('读取 TXT 题库失败，请确认文件编码为 UTF-8 且文件仍可访问。');
+      }
+
+      if (content.trim().length === 0) {
+        throw new Error('所选 TXT 题库内容为空，请选择包含题目的文件。');
+      }
+
+      return new SelectedTextBank(
+        uri,
+        name,
+        content,
+        fileStat.mtime * 1000
+      );
+    } finally {
+      await fileIo.close(selectedFile);
+    }
   }
 
   private static isTxtFile(name: string): boolean {

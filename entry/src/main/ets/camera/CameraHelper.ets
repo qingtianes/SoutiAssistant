@@ -22,9 +22,10 @@ export class CameraHelper {
   private context: common.UIAbilityContext;
   // 拍照锁：上一张没处理完不拍下一张
   private busy: boolean = false;
+  private releasing: boolean = false;
   private timer: number = -1;
   /** 拍照回调（外部拿文件路径处理，比如 OCR） */
-  onPhotoTaken: ((path: string) => void) | null = null;
+  onPhotoTaken: ((path: string) => Promise<void>) | null = null;
 
   constructor(context: common.UIAbilityContext) {
     this.context = context;
@@ -66,11 +67,18 @@ export class CameraHelper {
       this.session.addInput(this.cameraInput);
       // 4. 预览输出（绑定到 XComponent surface）
       const outputCap = this.cameraManager.getSupportedOutputCapability(back, camera.SceneMode.NORMAL_PHOTO);
+      if (outputCap.previewProfiles.length === 0 || outputCap.photoProfiles.length === 0) {
+        throw new Error('当前设备没有可用的相机预览或拍照规格');
+      }
       const previewProfile = outputCap.previewProfiles[0];
       this.previewOutput = this.cameraManager.createPreviewOutput(previewProfile, surfaceId);
       this.session.addOutput(this.previewOutput);
       // 5. 拍照输出（用 ImageReceiver 接收 JPEG，写文件）
       await this.setupPhotoOutput(outputCap);
+      if (this.photoOutput === null) {
+        throw new Error('创建相机拍照输出失败');
+      }
+      this.session.addOutput(this.photoOutput);
       // 6. 提交并启动
       await this.session.commitConfig();
       await this.session.start();
@@ -79,6 +87,7 @@ export class CameraHelper {
     } catch (err) {
       const e = err as BusinessError;
       hilog.error(DOMAIN, TAG, 'init camera failed: %{public}s', JSON.stringify(e));
+      await this.release();
       return false;
     }
   }
@@ -106,24 +115,39 @@ export class CameraHelper {
     if (this.receiver === null) {
       return;
     }
+    let capturedImage: image.Image | null = null;
+    let filePath: string = '';
     try {
-      const img = await this.receiver.readNextImage();
-      const component = await img.getComponent(image.ComponentType.JPEG);
+      capturedImage = await this.receiver.readNextImage();
+      const component = await capturedImage.getComponent(image.ComponentType.JPEG);
       const buffer = component.byteBuffer;
       // 写入沙箱文件
-      const filePath = `${this.context.filesDir}/shot_${Date.now()}.jpg`;
+      filePath = `${this.context.filesDir}/shot_${Date.now()}.jpg`;
       const file = fs.openSync(filePath, fs.OpenMode.READ_WRITE | fs.OpenMode.CREATE);
-      fs.writeSync(file.fd, buffer);
-      fs.closeSync(file.fd);
-      img.release();
+      try {
+        fs.writeSync(file.fd, buffer);
+      } finally {
+        fs.closeSync(file.fd);
+      }
       // 回调外部
       if (this.onPhotoTaken !== null) {
-        this.onPhotoTaken(filePath);
+        await this.onPhotoTaken(filePath);
       }
     } catch (err) {
       const e = err as BusinessError;
       hilog.error(DOMAIN, TAG, 'handle image failed: %{public}s', JSON.stringify(e));
     } finally {
+      if (capturedImage !== null) {
+        capturedImage.release();
+      }
+      if (filePath.length > 0) {
+        try {
+          await fs.unlink(filePath);
+        } catch (err) {
+          const e = err as BusinessError;
+          hilog.warn(DOMAIN, TAG, 'delete temporary photo failed: %{public}s', JSON.stringify(e));
+        }
+      }
       this.busy = false;
     }
   }
@@ -158,6 +182,10 @@ export class CameraHelper {
 
   /** 释放相机 */
   async release(): Promise<void> {
+    if (this.releasing) {
+      return;
+    }
+    this.releasing = true;
     this.stopAutoCapture();
     try {
       if (this.session !== null) {
@@ -179,5 +207,7 @@ export class CameraHelper {
     this.previewOutput = null;
     this.photoOutput = null;
     this.receiver = null;
+    this.busy = false;
+    this.releasing = false;
   }
 }

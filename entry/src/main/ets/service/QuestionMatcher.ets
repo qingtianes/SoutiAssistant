@@ -3,18 +3,48 @@
  */
 export class QuestionMatcher {
   static score(query: string, stem: string): number {
-    if (query.length === 0 || stem.length === 0) {
+    const normalizedQuery = QuestionMatcher.normalize(query);
+    const normalizedStem = QuestionMatcher.normalize(stem);
+    if (normalizedQuery.length === 0 || normalizedStem.length === 0) {
       return 0;
     }
+
     let score = 0;
-    if (query.length >= 4 && (stem.includes(query) || query.includes(stem))) {
+    if (normalizedQuery.length >= 4 &&
+      (normalizedStem.includes(normalizedQuery) || normalizedQuery.includes(normalizedStem))) {
       score += 100;
     }
-    const lcs = QuestionMatcher.lcsLen(query, stem);
+
+    const lcs = QuestionMatcher.lcsLen(normalizedQuery, normalizedStem);
     if (lcs >= 3) {
       score += lcs;
     }
     return score;
+  }
+
+  /**
+   * 统一题库文本和 OCR 文本的常见排版差异。
+   * 这里不删除中文正文，只去除会干扰题干匹配的版式噪声。
+   */
+  static normalize(text: string): string {
+    let normalized = text
+      .replace(/\uFEFF/g, '')
+      .toLowerCase()
+      .replace(/[\uFF01-\uFF5E]/g, (char: string) =>
+        String.fromCharCode(char.charCodeAt(0) - 0xFEE0));
+
+    // 先去掉题号再移除括号；否则“（1）题干”会变成“1题干”，
+    // 数字会继续参与匹配并降低 OCR 结果的稳定性。
+    normalized = normalized.replace(
+      /^(?:题目\s*)?(?:第\s*\d+\s*题\s*[:：.、]?|\(\s*\d+\s*\)|\d+\s*[.、)）:：])/,
+      ''
+    );
+    normalized = normalized
+      .replace(/[\s\u3000]/g, '')
+      .replace(/[(){}\[\]【】｛｝]/g, '')
+      .replace(/[，。！？；：、“”‘’「」『』《》〈〉,.!?;:"'`]/g, '');
+
+    return normalized;
   }
 
   private static lcsLen(a: string, b: string): number {

@@ -7,7 +7,6 @@ import { common } from '@kit.AbilityKit';
 import { router } from '@kit.ArkUI';
 import { BusinessError } from '@kit.BasicServicesKit';
 import promptAction from '@ohos.promptAction';
-import { FloatWindowManager } from '../overlay/FloatWindowManager';
 import { Bank, Question, SearchResult } from '../model/QuestionBankModels';
 import { QuestionBank } from '../service/QuestionBank';
 import { ImagePickerService } from '../picker/ImagePickerService';
@@ -30,18 +29,15 @@ struct Index {
   @State isImporting: boolean = false;
   @State isBankOperationBusy: boolean = false;
   @State pendingDeleteBankId: number = 0;
-  @State floatOn: boolean = false;
 
   private readonly questionBank: QuestionBank = new QuestionBank();
   private operationVersion: number = 0;
 
   aboutToAppear(): void {
-    this.floatOn = FloatWindowManager.isShowing();
     this.refreshBankStatus();
   }
 
   onPageShow(): void {
-    this.floatOn = FloatWindowManager.isShowing();
     this.refreshBankStatus();
   }
 
@@ -250,22 +246,6 @@ struct Index {
     this.refreshBankStatus();
   }
 
-  private async showFloat(): Promise<void> {
-    const context = getContext(this) as common.UIAbilityContext;
-    const ok = await FloatWindowManager.createFloatWindow(context);
-    if (ok) {
-      this.floatOn = true;
-      promptAction.showToast({ message: '悬浮窗已开启' });
-    } else {
-      promptAction.showToast({ message: '开启失败：当前设备或签名可能没有悬浮窗权限' });
-    }
-  }
-
-  private async hideFloat(): Promise<void> {
-    await FloatWindowManager.destroyFloatWindow();
-    this.floatOn = false;
-    promptAction.showToast({ message: '悬浮窗已关闭' });
-  }
 
   private describeError(err: Object): string {
     const error = err as BusinessError;
@@ -468,11 +448,11 @@ struct Index {
               .backgroundColor('#EEEEEE')
           }
 
-          Button('扫描搜题（摄像头实时识别）')
+          Button('扫描搜题（摄像头实时识别，后置开发）')
             .width('92%')
             .height(42)
-            .backgroundColor('#2F6FED')
-            .onClick(() => router.pushUrl({ url: 'ui/ScanPage' }))
+            .enabled(false)
+            .backgroundColor('#BDBDBD')
 
           Row({ space: 10 }) {
             Button(this.selectedImageUri.length > 0 ? '重新选择' : '选择图片')
@@ -547,26 +527,21 @@ struct Index {
           }
 
           Column({ space: 10 }) {
-            Text('实验性悬浮窗')
+            Text('悬浮窗（系统级权限实验）')
               .width('100%')
               .fontSize(15)
               .fontWeight(FontWeight.Bold)
               .fontColor('#333333')
-            Text('该功能依赖特殊系统权限，不影响上面的图片 OCR 主流程。')
+            Text('当前普通应用无法获得 SYSTEM_FLOAT_WINDOW。模拟器已验证系统会拒绝创建，因此不把静态演示窗口伪装成可用搜题功能。')
               .width('100%')
               .fontSize(12)
               .fontColor('#777777')
-            Button(this.floatOn ? '关闭悬浮窗' : '启动悬浮窗')
+              .lineHeight(18)
+            Button('当前不可用（需系统级签名）')
               .width('100%')
               .height(42)
-              .backgroundColor(this.floatOn ? '#E24B4A' : '#777777')
-              .onClick(() => {
-                if (this.floatOn) {
-                  this.hideFloat();
-                } else {
-                  this.showFloat();
-                }
-              })
+              .enabled(false)
+              .backgroundColor('#BDBDBD')
           }
           .width('92%')
           .padding(14)

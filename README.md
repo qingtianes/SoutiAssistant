@@ -1,51 +1,67 @@
 # 搜题助手 · 鸿蒙版（Souti Assistant for HarmonyOS）
 
-> 鸿蒙原生 ArkTS 版：用户主动选择图片 → 官方 OCR → 本地题库搜索答案。
+> 目标：以 `E:\SoutiAssistant` Android v1.0.2 为唯一产品标准，完整复刻结构、功能、交互、状态和 UI。当前处于 H0 复刻基线恢复阶段，尚非完整鸿蒙版，也不是正式发布版。
 
-## 当前版本
+## 当前阶段：H0 基线恢复
 
-- **阶段**：本地题库闭环 + 设置中心 + 使用说明完成，未真机验证
-- **当前分支**：`main`（接管工作已合并）
+鸿蒙旧代码曾经只实现了图片 OCR、TXT 题库和一个相机/静态悬浮窗原型。它们是历史部分工作，不代表最终产品范围。
 
-## 已完成
-
-| 模块 | 说明 |
-|---|---|
-| 图片 OCR | PhotoViewPicker 选图 → Core Vision textRecognition |
-| 题库管理 | TXT 导入、启用/停用、删除 |
-| 智能匹配 | LCS 最长公共子串 + 完全包含打分 |
-| 本地存储 | 应用私有 JSON，关闭系统备份 |
-| 设置中心 | 版本 / 使用说明 / 隐私 / 清空题库 |
-| 使用说明 | 题库导入 → 图片识别 → 搜索答案 → 设置 |
-
-## 项目结构
+权威目标和缺口以以下文件为准：
 
 ```text
-entry/src/main/ets/
-├── model/       QuestionBankModels
-├── repository/  QuestionRepository
-├── service/     QuestionBank、QuestionMatcher
-├── import/      TextBankImportService
-├── ocr/         OcrService
-├── picker/      ImagePickerService
-├── overlay/     FloatWindowManager、FloatPage
-├── camera/      CameraHelper（未接入）
-├── ui/          Index、SettingsPage、UsageGuidePage
+E:\SoutiAssistant_Harmony\docs\PARITY_MATRIX.md
+E:\SoutiAssistant_Harmony\docs\DECISIONS.md
+E:\SoutiAssistant_Harmony\docs\TASKS.md
+E:\SoutiAssistant_Harmony\docs\SESSION_HANDOFF.md
 ```
+
+## Android 基准必须完整复刻的模块
+
+- 首页和完整导航；
+- 智能导入：TXT、DOCX、PDF、XLS（Android 明确不支持 XLSX）；
+- 独立题库总览和题库详情；
+- 图片 OCR；
+- 浮窗搜题：绿框、屏幕采集、OCR、独立输出窗、暂停/拖动/滚动；
+- 读屏搜题：全屏多题 OCR、分题、去重、顺序输出；
+- 摄像头扫描搜题：最后开发；
+- 完整设置中心、主题、使用说明和隐私状态。
+
+## 当前已验证的历史能力
+
+- TXT 系统文件选择器导入、解析、自动启用；
+- 题库停用、重新启用、删除和重启持久化；
+- 手动题干本地匹配和答案输出；
+- 模拟器中相机 API 曾经启动，但 OCR 原生模块缺失；
+- 普通模拟器拒绝系统悬浮窗权限。
+
+这些证据不能替代完整复刻，也不能替代用户的真机最终验收。
+
+## 当前安全冻结
+
+摄像头扫描暂时不开发、不测试：
+
+- 不自动申请摄像头权限；
+- 不启动预览；
+- 不自动拍照；
+- 不调用电脑或模拟器摄像头。
+
+之前的模拟器测试发现其摄像头映射到了宿主机摄像头；该事件已记录为隐私踩坑，只有用户明确授权后才恢复摄像头阶段。
 
 ## 构建
 
-- 构建前设置 `NODE_HOME`、`JAVA_HOME`、`DEVECO_SDK_HOME` 到 DevEco 目录
-- 命令：`hvigorw.bat assembleHap --mode module -p product=default -p module=entry@default -p buildMode=debug --no-daemon`
-- 当前：构建成功，生成未签名 HAP
+```powershell
+$env:JAVA_TOOL_OPTIONS='-Xms128m -Xmx1536m'
+$env:JAVA_HOME='E:\Huawei\DevEco Studio\jbr'
+$env:PATH='E:\Huawei\DevEco Studio\tools\node;' + $env:PATH
+& 'E:\Huawei\DevEco Studio\tools\hvigor\bin\hvigorw.bat' assembleHap --mode module -p product=default
+```
 
-## 待办
+发布模式同样必须通过构建，但签名和最终发布要等用户真机验收后再决定。
 
-- 真机验证中文 OCR、相册 URI 读取
-- DevEco 自动签名并安装
-- 按安卓路线继续对齐读屏/扫描搜题
+## 规则
 
-## 版本历史
-
-- 接管前：工程骨架 + 悬浮窗 Demo + 题库模型
-- 接管后：图片 OCR 搜索闭环、TXT 题库导入、模块边界对齐安卓
+- Android v1.0.2 是唯一产品基线；
+- 不用截图和坐标点击循环替代自动化验证；
+- 每个重要节点更新 Markdown、README、CHANGELOG，构建/验证通过后 commit 并 push `main`；
+- 最终真机验收由用户完成；
+- 当前不 push，直到 H0 文档和矩阵审查完成。
