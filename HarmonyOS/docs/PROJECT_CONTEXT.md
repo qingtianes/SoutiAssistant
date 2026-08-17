@@ -89,4 +89,3 @@ $env:PATH='E:\Huawei\DevEco Studio\jbr\bin;E:\Huawei\DevEco Studio\tools\node;' 
 - Memory: `project-memory`; lessons: `self-improving-agent`; discovery/creation: `find-skills` and `skill-creator`.
 - `ponytail` may simplify implementation only after scope is fixed; it may never remove Android features.
 - Main agent owns architecture/integration; development agents use disjoint write scopes; review and verification are independent.
-

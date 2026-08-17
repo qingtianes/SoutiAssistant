@@ -245,4 +245,3 @@ struct HomePage {
     .backgroundColor(this.dark ? '#1A1A1A' : '#F7F7F7')
   }
 }
-

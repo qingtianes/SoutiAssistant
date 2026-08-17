@@ -31,4 +31,3 @@ docs/*.md memory files use Project Memory Metadata v1 frontmatter; preserve it w
 ## GitHub Proxy
 - Git remote operations use the local proxy http://127.0.0.1:7990 (already configured in E:\SoutiAssistant\.git\config).
 - If a push/fetch fails to connect, the proxy software is probably off: ask the user to enable it, then retry.
-
