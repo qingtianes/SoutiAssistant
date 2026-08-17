@@ -1,0 +1,28 @@
+{
+  "string": [
+    {
+      "name": "module_desc",
+      "value": "module description"
+    },
+    {
+      "name": "EntryAbility_desc",
+      "value": "description"
+    },
+    {
+      "name": "EntryAbility_label",
+      "value": "label"
+    },
+    {
+      "name": "app_name",
+      "value": "搜题助手"
+    },
+    {
+      "name": "float_window_reason",
+      "value": "用于在答题时显示悬浮搜题窗口"
+    },
+    {
+      "name": "camera_reason",
+      "value": "用于拍摄题目进行识别搜题"
+    }
+  ]
+}
