@@ -36,8 +36,8 @@ related:
 
 ## Next milestones
 
-1. H1: complete Harmony navigation and Android-shaped UI skeleton.
-2. H2: smart import and independent bank overview.
+1. [x] H1: complete Harmony navigation and Android-shaped UI skeleton (build passed).
+2. H2 (next): smart import full formats, import naming confirm, bank overview tabs/confirm, bank share.
 3. H3: complete settings and usage guide parity.
 4. H4: image OCR parity.
 5. H5: float search capability probe and implementation.
@@ -63,4 +63,3 @@ related:
 
 - Real-device OCR, camera, screen capture, and signing are intentionally deferred to the final user-acceptance phase.
 - Harmony now uses the root Android repository remote: `origin` (`qingtianes/SoutiAssistant`).
-

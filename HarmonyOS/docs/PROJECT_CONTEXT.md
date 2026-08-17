@@ -69,6 +69,10 @@ $env:PATH='E:\Huawei\DevEco Studio\jbr\bin;E:\Huawei\DevEco Studio\tools\node;' 
 & 'E:\Huawei\DevEco Studio\tools\hvigor\bin\hvigorw.bat' --no-daemon assembleHap --mode module -p product=default
 ```
 
+## GitHub proxy
+
+- Push/fetch to GitHub uses local proxy http://127.0.0.1:7990 (git config already set).
+- If unreachable, ask the user to enable their proxy software, then retry; do not guess another port.
 ## Required workflow
 
 1. Read Android baseline and project memory before Harmony coding.
@@ -85,3 +89,4 @@ $env:PATH='E:\Huawei\DevEco Studio\jbr\bin;E:\Huawei\DevEco Studio\tools\node;' 
 - Memory: `project-memory`; lessons: `self-improving-agent`; discovery/creation: `find-skills` and `skill-creator`.
 - `ponytail` may simplify implementation only after scope is fixed; it may never remove Android features.
 - Main agent owns architecture/integration; development agents use disjoint write scopes; review and verification are independent.
+

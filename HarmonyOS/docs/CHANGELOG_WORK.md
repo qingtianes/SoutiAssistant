@@ -63,3 +63,16 @@ A long conversation is not project memory. If the baseline, decisions, task stat
 - Pushed unified-repository H0 checkpoint to GitHub origin/main (2b561ca).
 - Git proxy configured for this repository: http://127.0.0.1:7990.
 
+
+
+## 2026-08-18 - H1 page skeleton
+
+- Added `ui/HomePage.ets` with Android home information architecture (banks / shortcut-search / settings sections, circular help, theme toggle, truthful capability states).
+- Added `ui/ImportPage.ets` (smart-import shell; TXT functional, DOCX/PDF/XLS marked in progress).
+- Added `ui/OverviewPage.ets` (bank overview with count, enable/disable, delete, detail navigation).
+- Added `ui/BankDetailPage.ets` (per-question view and single-question delete).
+- Expanded `SettingsPage.ets` to the Android five-category skeleton with truthful platform states.
+- Updated `UsageGuidePage.ets` to the Android guide order.
+- Registered new pages in `main_pages.json` with `HomePage` as entry; kept `Index` as Harmony-extra image/text utility.
+- ArkTS build passed with the documented `--no-daemon` command.
+- Recorded GitHub proxy `http://127.0.0.1:7990` in AGENTS.md and Harmony project context.

@@ -1,7 +1,11 @@
 {
   "src": [
-    "ui/Index",
+    "ui/HomePage",
+    "ui/ImportPage",
+    "ui/OverviewPage",
+    "ui/BankDetailPage",
     "ui/SettingsPage",
-    "ui/UsageGuidePage"
+    "ui/UsageGuidePage",
+    "ui/Index"
   ]
 }

@@ -53,19 +53,26 @@ H0 is complete and pushed:
 - Canonical paths and project memory updated.
 - Android full regression passed; Harmony HAP build passed with `--no-daemon`.
 
-## Next exact actions (H1)
+## H1 status
 
-1. Read `E:\SoutiAssistant\HarmonyOS\docs\PARITY_MATRIX.md` page/navigation contracts.
-2. Create Harmony page structure matching Android screens: home, import, overview, bank detail, scan (disabled), settings, help, image OCR placeholder.
-3. Recreate Android UI components (cards, sections, conditional states, circular help button) in ArkTS.
-4. Build with the documented `--no-daemon` command; no camera tests.
+H1 page skeleton is done and builds:
+
+- HomePage, ImportPage, OverviewPage, BankDetailPage, expanded SettingsPage, guide order updated.
+- Camera remains frozen; scan page not registered.
+- Index kept as Harmony-extra image/text utility.
+
+## Next exact actions (H2)
+
+1. Port Android smart import architecture: `Importer` dispatch, format detection, DOCX/PDF/XLS parsers, chunker reuse; TXT already wired.
+2. Add import naming confirmation and cancel steps.
+3. Add bank overview tabs (manual import / AI import), selected-count confirm, and share-bank-to-TXT.
+4. Keep camera frozen; run the documented `--no-daemon` HAP build.
 5. Update memory/docs, commit, and push `main`.
 
 ## Prohibited
+
 
 - Do not start or test camera scanning.
 - Do not use coordinate-click/screenshot loops.
 - Do not mark any parity item complete from build success alone.
 - Do not create a branch or release.
-
-

@@ -27,3 +27,8 @@ docs/*.md memory files use Project Memory Metadata v1 frontmatter; preserve it w
 - Android v1.0.2+ is the product baseline; read HarmonyOS/docs/PARITY_MATRIX.md before changing Harmony code.
 - Use E:\Codex\CodexHome\skills\souti-parity-development\SKILL.md.
 - Keep Android and Harmony memory, changelog, and task state accurate; important validated milestones are committed and pushed to main.
+
+## GitHub Proxy
+- Git remote operations use the local proxy http://127.0.0.1:7990 (already configured in E:\SoutiAssistant\.git\config).
+- If a push/fetch fails to connect, the proxy software is probably off: ask the user to enable it, then retry.
+
