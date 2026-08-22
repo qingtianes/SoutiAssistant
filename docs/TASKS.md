@@ -23,7 +23,7 @@ related:
 # Tasks
 
 ## Current State
-- Android v1.1.1 主线保持未 push 状态，本地正在修复题库导入回归问题。
+- Android v1.1.2 正在发布题库导入修复；源码已 push，APK Release 正在生成。
 - 本次修复已通过单元测试、Lint 和 assembleDebug；等待用户在模拟器/真机导入三个样例文件验收。
 
 ## Recommended Next Action

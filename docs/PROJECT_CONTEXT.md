@@ -25,7 +25,7 @@ related:
 ## Overview
 - 项目：SoutiAssistant（搜题助手）Android 客户端。
 - 用途：浮窗搜题、读屏搜题、摄像头扫描搜题，实时 OCR 题目并在已勾选本地题库中匹配答案输出。
-- Android 当前版本：v1.1.1（已发布 GitHub Release）。
+- Android 当前版本：v1.1.2（本次题库导入修复发布中）。
 - 当前状态：Android 主线已完成并发布；HarmonyOS 已作为本仓库 `HarmonyOS/` 子目录进入完整复刻阶段。
 
 ## Tech Stack
