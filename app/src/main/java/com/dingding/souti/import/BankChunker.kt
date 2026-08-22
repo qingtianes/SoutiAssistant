@@ -1,15 +1,15 @@
 package com.dingding.souti.import
 
+
 /**
  * 题库切块核心：把文档解析出的纯文本行，按题目边界切成“每块一道题”。
  * 只做行级分类和切块，不负责读取文件。
  */
 object BankChunker {
-    private val answerStart = Regex("^\\s*(答案|正确答案)\\s*[:：]?\\s*", RegexOption.IGNORE_CASE)
 
     fun isSectionTitle(t: String): Boolean {
         if (t.isBlank()) return true
-        if (Regex("^[一二三四五六七八九十]+、").containsMatchIn(t)) return true
+        if (Regex("^[一二三四五六七八九十]+、.*(判断题|单选题|多选题|选择题|简答题|计算题|理论知识|专业知识|基本要求|相关知识)").containsMatchIn(t)) return true
         if (t.contains("作业") && t.length < 10 && !t.contains("（") && !t.contains("(") &&
             !Regex("^\\d+[.、]").containsMatchIn(t)) return true
         if (Regex("^\\d+[.、]\\S{1,6}$").containsMatchIn(t) && !t.contains("（") && !t.contains("(")) return true
@@ -19,17 +19,17 @@ object BankChunker {
     }
 
     fun isQuestionStart(t: String): Boolean {
-        val m = Regex("^(\\d+)[.、]\\s*(.+)$").find(t) ?: return false
+        val m = QuestionSyntax.questionStart.find(t) ?: return false
         val stem = m.groupValues[2].trim()
         if (stem.length < 4 && !stem.contains("（") && !stem.contains("(")) return false
         return true
     }
 
     fun isOptionLine(t: String): Boolean {
-        return Regex("^[A-Da-d]\\s*[.、．)）]").containsMatchIn(t)
+        return QuestionSyntax.optionLine.containsMatchIn(t)
     }
 
-    private fun isAnswerStart(t: String): Boolean = answerStart.containsMatchIn(t)
+    private fun isAnswerStart(t: String): Boolean = QuestionSyntax.isAnswerStart(t)
 
     /**
      * TXT 导出通常是“一道题一个空行块”，而简答题答案内部也会使用“1、2、3、”编号。
@@ -84,26 +84,79 @@ object BankChunker {
         )
     }
 
+    /**
+     * 部分文字版 PDF 在题干、选项和答案之间也会产生排版空行，不能把空行当作题目边界。
+     * 当文档反复出现“题号 +（资源编号）”这一强特征时，以它作为唯一可靠边界。
+     */
+    private fun chunkStrongNumberedQuestions(lines: List<String>): Importer.ParseResult? {
+        val starts = lines.indices.filter { index ->
+            QuestionSyntax.strongNumberedQuestion.containsMatchIn(lines[index].trim())
+        }
+        if (starts.size < 2) return null
+
+        val chunks = starts.mapIndexedNotNull { position, start ->
+            val end = starts.getOrElse(position + 1) { lines.size }
+            val content = lines.subList(start, end)
+                .map(String::trim)
+                .filter { line ->
+                    line.isNotBlank() &&
+                        !Regex("^\\d+\\s*/\\s*\\d+$").matches(line) &&
+                        !isSectionTitle(line)
+                }
+            content.takeIf { it.isNotEmpty() }?.joinToString("\n")
+        }
+        if (chunks.size < 2) return null
+
+        return Importer.ParseResult(
+            chunks = chunks,
+            hasNumbered = true,
+            noNumberWithOption = false,
+            blankSeparated = false
+        )
+    }
+
     fun chunkLines(txts: List<String>): Importer.ParseResult {
-        chunkAnswerBlocks(txts)?.let { return it }
+        val lines = txts
+        chunkStrongNumberedQuestions(lines)?.let { return it }
+        chunkAnswerBlocks(lines)?.let { return it }
 
         val chunks = mutableListOf<String>()
         var current = mutableListOf<String>()
-        var hasNumbered = txts.any { isQuestionStart(it) }
+        var hasNumbered = lines.any { isQuestionStart(it) }
         var noNumberWithOption = false
         var blankSeparated = false
         var inAnswer = false
 
-        var start = txts.size
-        for (i in txts.indices) {
-            val t = txts[i]
+        var start = lines.size
+        for (i in lines.indices) {
+            val t = lines[i]
             if (t.isBlank() || isSectionTitle(t)) continue
             if (isQuestionStart(t) || t.contains("（") || t.contains("(") || isOptionLine(t)) {
                 start = i
                 break
             }
         }
-        if (start == txts.size) start = 0
+        if (start == lines.size) start = 0
+
+        fun looksLikeQuestionBoundary(index: Int): Boolean {
+            if (!isQuestionStart(lines[index])) return false
+            val currentLine = lines[index].trim()
+            if (QuestionSyntax.strongNumberedQuestion.containsMatchIn(currentLine)) return true
+            if (currentLine.endsWith("?") || currentLine.endsWith("？")) return true
+
+            var inspectedContentLines = 0
+            for (nextIndex in (index + 1) until lines.size) {
+                val next = lines[nextIndex].trim()
+                if (next.isBlank()) return false
+                if (isOptionLine(next) || isAnswerStart(next)) return true
+                if (isQuestionStart(next)) return false
+                if (!isSectionTitle(next)) {
+                    inspectedContentLines++
+                    if (inspectedContentLines >= 4) return false
+                }
+            }
+            return false
+        }
 
         fun flush() {
             if (current.isNotEmpty()) {
@@ -115,8 +168,8 @@ object BankChunker {
             inAnswer = false
         }
 
-        for (i in txts.indices) {
-            val t = txts[i].trim()
+        for (i in lines.indices) {
+            val t = lines[i].trim()
             if (i < start && !isQuestionStart(t) && !isOptionLine(t)) continue
             if (t.isBlank()) {
                 flush()
@@ -124,12 +177,13 @@ object BankChunker {
                 continue
             }
             if (isSectionTitle(t) && !inAnswer) continue
+            if (inAnswer && Regex("^\\d+/\\d+$").matches(t)) continue
             when {
                 isAnswerStart(t) -> {
                     current.add(t)
                     inAnswer = true
                 }
-                isQuestionStart(t) && !inAnswer -> {
+                isQuestionStart(t) && (!inAnswer || looksLikeQuestionBoundary(i)) -> {
                     flush()
                     current.add(t)
                 }

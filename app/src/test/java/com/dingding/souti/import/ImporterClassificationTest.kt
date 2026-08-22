@@ -36,10 +36,10 @@ class ImporterClassificationTest {
 
     @Test
     fun `isOptionLine recognizes latin option labels and punctuation variants`() {
-        listOf("A. 选项", "b、选项", "C．选项", "d）选项", "A)选项").forEach {
+        listOf("A. 选项", "b、选项", "C．选项", "d）选项", "A)选项", "E. 扩展选项", "H：第八项").forEach {
             assertTrue("Expected option line: [$it]", Importer.isOptionLine(it))
         }
-        listOf("AA. 不是单个选项", "E. 超出范围", "1. 题目", "A 不是选项").forEach {
+        listOf("AA. 不是单个选项", "I. 超出范围", "1. 题目", "A 不是选项").forEach {
             assertFalse("Expected non-option line: [$it]", Importer.isOptionLine(it))
         }
     }

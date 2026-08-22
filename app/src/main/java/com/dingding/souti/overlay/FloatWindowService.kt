@@ -1323,7 +1323,13 @@ class FloatWindowService : Service() {
      * OCR 出来的可能是整屏多道题，先按"答案"切分，每段提取题干关键词搜题
      */
     private fun processOcrText(text: String) {
-        val processed = OcrQuestionProcessor.processScanText(text, bank::search) ?: return
+        val limit = searchLimit()
+        val processed = OcrQuestionProcessor.processScanText(
+            text = text,
+            search = bank::search,
+            resultLimit = limit,
+            perQueryLimit = limit
+        ) ?: return
         Log.d("FloatWindow", "processOcrText: cleaned.len=${processed.normalizedText.length}")
         Log.d("FloatWindow", "提取 ${processed.queries.size} 个查询词")
         ocrRawText = processed.normalizedText

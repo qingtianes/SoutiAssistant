@@ -66,3 +66,8 @@ related:
 - 未经用户明确允许，不 push。
 - 鸿蒙重要里程碑在构建/验证/文档审查通过后提交并 push 到本仓库 main。
 - WorkBuddy 重做 UI 时只改 `com.dingding.souti.ui` 的排版/样式，不改业务逻辑与 overlay 行为。
+
+## Android v1.1.3 题库导入与搜索基线（2026-08-22）
+- 统一结构化字段：题干、选项、答案、原始题块 `rawText`；旧版整块 `stem` 在搜索时内存适配。
+- 真实回归基线：TXT=432、XLS=435、PDF=723；三种 OCR 入口共用 `QuestionSearchEngine`。
+- 文字版 PDF 支持强资源编号边界、判断题内嵌答案和同行多选项；扫描版/图片/复杂公式不保证解析。

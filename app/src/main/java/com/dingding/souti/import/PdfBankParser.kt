@@ -11,7 +11,10 @@ object PdfBankParser {
             PDFBoxResourceLoader.init(context.applicationContext)
             input.use { stream ->
                 com.tom_roush.pdfbox.pdmodel.PDDocument.load(stream).use { document ->
-                    val stripper = com.tom_roush.pdfbox.text.PDFTextStripper()
+                    val stripper = com.tom_roush.pdfbox.text.PDFTextStripper().apply {
+                        sortByPosition = true
+                        suppressDuplicateOverlappingText = true
+                    }
                     val text = stripper.getText(document)
                     if (text.isBlank()) {
                         Importer.ParseResult(emptyList(), error = "扫描版 PDF（无文本层），无法提取文字，请使用文字版 PDF")

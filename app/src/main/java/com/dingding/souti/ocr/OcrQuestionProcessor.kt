@@ -2,14 +2,14 @@ package com.dingding.souti.ocr
 
 import com.dingding.souti.model.SearchResult
 
-/**
- * OCR 文本到题库查询之间的纯 Kotlin 处理逻辑。
- *
- * 这里不依赖 Android 的 Context、View、Handler 或录屏资源，便于用本地单元测试锁定行为。
- */
+/** 三种 OCR 搜题入口共用的纯 Kotlin 查询准备与结果合并逻辑。 */
 object OcrQuestionProcessor {
-    private val answerSeparator = Regex("答案\\s*[:：]")
-    private val optionMarker = Regex("[A-E][.、．、)）]")
+    private val answerMarker = Regex("答\\s*案\\s*[:：;；]?\\s*", RegexOption.IGNORE_CASE)
+    private val numberedQuestion = Regex("(?m)^\\s*\\d{1,4}\\s*[.、．:：)）]\\s*\\S+")
+    private val shortAnswerPayload = Regex(
+        "^(?:[A-Ha-h]{1,8}|正确|错误|对|错|是|否|√|×|true|false)(?=\\s|$)",
+        RegexOption.IGNORE_CASE
+    )
 
     data class ScanResult(
         val normalizedText: String,
@@ -19,24 +19,32 @@ object OcrQuestionProcessor {
     )
 
     fun normalizeText(text: String): String =
-        text.replace("\n", " ").replace(Regex("\\s+"), " ").trim()
+        text.replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .replace("\n", " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
 
+    private fun normalizeStructuredText(text: String): String =
+        text.replace("\r\n", "\n")
+            .replace('\r', '\n')
+            .replace(Regex("[\\t ]+"), " ")
+            .replace(Regex(" *\\n+ *"), "\n")
+            .trim()
+
+    /**
+     * 优先按可靠题号行切分；否则使用“答案”锚点，并只消费可确认的短答案载荷。
+     * 无法可靠切分时保留完整原文，不做固定长度截断、不删除括号/法规前缀/选项。
+     */
     fun extractScanQueries(text: String): List<String> {
-        val cleaned = normalizeText(text)
-        if (cleaned.isBlank()) return emptyList()
+        val structured = normalizeStructuredText(text)
+        if (structured.isBlank()) return emptyList()
 
-        return cleaned.split(answerSeparator).mapNotNull { segment ->
-            val trimmed = segment.trim()
-            if (trimmed.length < 4) return@mapNotNull null
-
-            val parenthesisIndex = maxOf(trimmed.lastIndexOf('('), trimmed.lastIndexOf('（'))
-            val stem = if (parenthesisIndex > 3) {
-                trimmed.substring(0, parenthesisIndex).trim()
-            } else {
-                trimmed.take(20)
-            }
-            stem.takeIf { it.isNotBlank() }
-        }
+        splitByNumberedLines(structured).takeIf { it.size >= 2 }
+            ?.let { return it.map(::normalizeText) }
+        splitByAnswerMarkers(structured).takeIf { it.size >= 2 }
+            ?.let { return it.map(::normalizeText) }
+        return listOf(normalizeText(structured))
     }
 
     fun processScanText(
@@ -48,7 +56,7 @@ object OcrQuestionProcessor {
         if (text.isBlank()) return null
 
         val normalizedText = normalizeText(text)
-        val queries = extractScanQueries(normalizedText)
+        val queries = extractScanQueries(text)
         val merged = LinkedHashMap<Long, SearchResult>()
 
         queries.forEach { query ->
@@ -69,29 +77,38 @@ object OcrQuestionProcessor {
         )
     }
 
-    /**
-     * 用“答案：”作为题目分隔锚点。只有成功得到至少两段时才进入多题模式；
-     * 否则保持旧行为，把原文作为一个整体返回。
-     */
-    fun splitScreenReadQuestions(text: String): List<String> {
-        val questions = text.split(answerSeparator).mapNotNull { part ->
-            part.trim()
-                .replace(Regex("^[A-Ea-e]\\s*"), "")
-                .trim()
-                .takeIf { it.length >= 4 }
+    fun splitScreenReadQuestions(text: String): List<String> = extractScanQueries(text)
+
+    /** 保留完整题目语义，仅统一空白；名称保留以兼容现有调用。 */
+    fun extractScreenReadStem(segment: String): String = normalizeText(segment)
+
+    private fun splitByNumberedLines(text: String): List<String> {
+        val matches = numberedQuestion.findAll(text).toList()
+        if (matches.size < 2) return emptyList()
+        return matches.mapIndexedNotNull { index, match ->
+            val end = if (index + 1 < matches.size) matches[index + 1].range.first else text.length
+            text.substring(match.range.first, end).trim().takeIf { it.length >= 4 }
         }
-        return if (questions.size >= 2) questions else listOf(text)
     }
 
-    /** 保持现有多题搜索规则：去选项、括号内容和开头的《……》依据前缀。 */
-    fun extractScreenReadStem(segment: String): String {
-        val option = optionMarker.find(segment)
-        val stemPart = if (option != null) segment.substring(0, option.range.first) else segment
-        return stemPart
-            .replace(Regex("[（(][^（）()]*[）)]"), "")
-            .replace(Regex("^[^《]*《[^》]*》"), "")
-            .replace(Regex("^[,，。.、\\s]+"), "")
-            .replace(Regex("\\s+"), "")
-            .trim()
+    private fun splitByAnswerMarkers(text: String): List<String> {
+        val markers = answerMarker.findAll(text).toList()
+        if (markers.isEmpty()) return emptyList()
+
+        val segments = mutableListOf<String>()
+        var cursor = 0
+        markers.forEach { marker ->
+            text.substring(cursor, marker.range.first).trim()
+                .takeIf { it.length >= 4 }
+                ?.let(segments::add)
+
+            val afterMarker = marker.range.last + 1
+            val remainder = text.substring(afterMarker)
+            val payload = shortAnswerPayload.find(remainder)
+            cursor = afterMarker + (payload?.value?.length ?: 0)
+            while (cursor < text.length && text[cursor].isWhitespace()) cursor++
+        }
+        text.substring(cursor).trim().takeIf { it.length >= 4 }?.let(segments::add)
+        return segments
     }
 }

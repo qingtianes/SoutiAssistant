@@ -46,19 +46,14 @@ class QuestionBank(context: Context) {
         val activeIds = getActiveBankIds()
         if (activeIds.isEmpty()) return emptyList()
         val banks = loadBanks().associateBy { it.id }
-        return loadAllQuestions()
+        val activeQuestions = loadAllQuestions()
             .filter { activeIds.contains(it.bankId.toString()) }
-            .map { it to QuestionMatcher.score(q, it.stem) }
-            .filter { it.second > 0 }
-            .sortedByDescending { it.second }
-            .take(limit)
-            .map { (question, score) ->
-                SearchResult(
-                    question = question,
-                    bankName = banks[question.bankId]?.name ?: "未知题库",
-                    score = score
-                )
-            }
+        return QuestionSearchEngine.search(
+            query = q,
+            questions = activeQuestions,
+            bankNames = banks.mapValues { it.value.name },
+            limit = limit
+        )
     }
 
     companion object {

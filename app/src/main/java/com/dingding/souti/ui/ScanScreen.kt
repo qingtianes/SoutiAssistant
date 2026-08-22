@@ -74,6 +74,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.dingding.souti.model.SearchResult
+import com.dingding.souti.ocr.OcrQuestionProcessor
 import com.dingding.souti.repository.QuestionBank
 import com.dingding.souti.repository.SettingsStore
 import com.dingding.souti.ui.theme.LocalGlass
@@ -146,7 +147,12 @@ fun ScanScreen(onBack: () -> Unit) {
                             searchJob = scope.launch {
                                 val found = withContext(Dispatchers.IO) {
                                     val limit = SettingsStore.resultLimit(context)
-                                    bank.search(text, limit = limit)
+                                    OcrQuestionProcessor.processScanText(
+                                        text = text,
+                                        search = bank::search,
+                                        resultLimit = limit,
+                                        perQueryLimit = limit
+                                    )?.matches.orEmpty()
                                 }
                                 results = found
                             }

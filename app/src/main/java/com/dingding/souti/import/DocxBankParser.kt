@@ -10,7 +10,7 @@ object DocxBankParser {
         input ?: return Importer.ParseResult(emptyList(), error = "无法读取文件")
         return try {
             val paragraphs = extractDocxParagraphs(input)
-            if (paragraphs.isEmpty()) {
+            if (paragraphs.none { it.isNotBlank() }) {
                 Importer.ParseResult(emptyList(), error = "docx 未提取到文本（可能已损坏或加密）")
             } else {
                 val sourceLen = paragraphs.joinToString("").replace(Regex("\\s+"), "").length
@@ -39,16 +39,17 @@ object DocxBankParser {
             entry = zis.nextEntry
         }
         zis.close()
-        return paragraphs.map { it.trim() }.filter { it.isNotEmpty() }
+        return paragraphs.map { it.trim() }
     }
 
     private fun parseWordXml(xml: String): List<String> {
+        val normalizedXml = xml.replace(Regex("<w:p\\s*/>"), "<w:p></w:p>")
         val paragraphs = mutableListOf<String>()
         try {
             val factory = XmlPullParserFactory.newInstance()
             factory.isNamespaceAware = true
             val parser = factory.newPullParser()
-            parser.setInput(xml.reader())
+            parser.setInput(normalizedXml.reader())
             var currentParagraph = StringBuilder()
             var inText = false
             var event = parser.eventType
@@ -60,6 +61,8 @@ object DocxBankParser {
                             currentParagraph = StringBuilder()
                         } else if (name == "t" || name == "instrText") {
                             inText = true
+                        } else if (name == "tab" || name == "br") {
+                            currentParagraph.append(' ')
                         }
                     }
                     XmlPullParser.TEXT -> {
@@ -70,7 +73,7 @@ object DocxBankParser {
                             "t", "instrText" -> inText = false
                             "p" -> {
                                 val s = currentParagraph.toString().trim()
-                                if (s.isNotEmpty()) paragraphs.add(s)
+                                paragraphs.add(s)
                             }
                         }
                     }
@@ -78,7 +81,7 @@ object DocxBankParser {
                 event = parser.next()
             }
         } catch (e: Exception) {
-            return extractTextSimple(xml)
+            return extractTextSimple(normalizedXml)
         }
         return paragraphs
     }
@@ -93,7 +96,7 @@ object DocxBankParser {
                 sb.append(tm.groupValues[1])
             }
             val s = sb.toString().trim()
-            if (s.isNotEmpty()) paragraphs.add(s)
+            paragraphs.add(s)
         }
         return paragraphs
     }

@@ -58,7 +58,8 @@ class QuestionRepository(context: Context) {
                     (0 until ja.length()).map { ja.getString(it) }
                 } ?: emptyList(),
                 answer = o.optString("answer", ""),
-                source = o.optString("source", "")
+                source = o.optString("source", ""),
+                rawText = o.optString("rawText", "")
             )
         }
     }
@@ -75,6 +76,7 @@ class QuestionRepository(context: Context) {
                 put("options", opts)
                 put("answer", q.answer)
                 put("source", q.source)
+                put("rawText", q.rawText)
             })
         }
         prefs.edit().putString("questions", arr.toString()).apply()

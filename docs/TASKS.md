@@ -23,20 +23,20 @@ related:
 # Tasks
 
 ## Current State
-- Android v1.1.2 正在发布题库导入修复；源码已 push，APK Release 正在生成。
-- 本次修复已通过单元测试、Lint 和 assembleDebug；等待用户在模拟器/真机导入三个样例文件验收。
+- Android v1.1.3 题库导入与三种搜题匹配回归已完成代码修复。
+- 真实样例验证：TXT 432 题、XLS 435 题、文字版 PDF 723 题；PDF 判断题答案 163 条已从题干标记正确提取。
+- 自动测试、Lint、Debug/Release 构建完成后发布；真机验收仍由用户安装 Release APK 后进行。
 
 ## Recommended Next Action
-1. 安装本地 debug APK，分别导入 PDF、XLS、TXT 三个样例并核对题数与答案结构。
-2. 若用户验收通过，再决定是否提交/推送本次导入修复；本轮未 push。
-3. 导入修复确认后再继续鸿蒙版本。
+1. 用户在真机分别导入 TXT/XLS/PDF 样例，抽查简答题、乱序选项、判断题和公式符号。
+2. 记录扫描版 PDF、图片题和复杂公式的真实样例，为后续可选 AI 导入方案提供依据。
 
 ## Verification
-- 单元测试通过；Lint 0 error；assembleDebug/assembleRelease 成功（JDK 21）。
-- 发布包命名规范：`SoutiAssistant-vX.Y.Z-release.apk`。
+- 单元测试覆盖 TXT/XLS/PDF/DOCX、旧数据兼容、数学符号和三种 OCR 共用查询流程。
+- 发布包命名：`SoutiAssistant-v1.1.3-release.apk`。
 
 ## Blockers
-- PDF 中文字体映射是否在用户设备上正常显示，仍需 Android 模拟器或真机导入验证。
+- 扫描版 PDF、图片题和复杂 Office 公式无法由纯文本解析保证完整性；本版本明确提示并保留导入后抽查。
 
 ## Done
 - [x] 浮窗搜题 / 读屏搜题 / 扫描搜题

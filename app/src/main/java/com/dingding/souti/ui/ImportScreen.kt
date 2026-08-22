@@ -3,6 +3,7 @@ package com.dingding.souti.ui
 import com.dingding.souti.model.Question
 import com.dingding.souti.repository.QuestionBank
 import com.dingding.souti.import.Importer
+import com.dingding.souti.import.ImportQualityAnalyzer
 import com.dingding.souti.import.QuestionChunkParser
 
 import android.content.Context
@@ -60,6 +61,7 @@ fun ImportScreen(onBack: () -> Unit) {
     var importCoverage by remember { mutableStateOf(100) }
     var importSourceLen by remember { mutableStateOf(0) }
     var importParsedLen by remember { mutableStateOf(0) }
+    var importWarnings by remember { mutableStateOf<List<String>>(emptyList()) }
 
     val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
@@ -85,6 +87,7 @@ fun ImportScreen(onBack: () -> Unit) {
             importCoverage = 100
             importSourceLen = 0
             importParsedLen = 0
+            importWarnings = emptyList()
             Thread {
                 val result = try {
                     Importer.parse(context, uri, cleanName)
@@ -111,6 +114,7 @@ fun ImportScreen(onBack: () -> Unit) {
                             return@runOnUiThreadCompat
                         }
                         parsedQuestions = questions
+                        importWarnings = ImportQualityAnalyzer.analyze(questions).warnings
                         val cov = result.coverage()
                         if (result.sourceLength > 0 && cov < 60) {
                             parsedQuestions = null
@@ -183,6 +187,13 @@ fun ImportScreen(onBack: () -> Unit) {
                     OutlinedTextField(value = bankName, onValueChange = { bankName = it }, singleLine = true, label = { Text("题库名") })
                     Spacer(Modifier.height(8.dp))
                     Text("已识别 ${parsedQuestions!!.size} 道题", fontSize = 12.sp, color = glass.primary)
+                    if (importWarnings.isNotEmpty()) {
+                        Spacer(Modifier.height(8.dp))
+                        Text("导入质量提示：", fontSize = 11.sp, color = Color(0xFFF57C00), fontWeight = FontWeight.Bold)
+                        importWarnings.forEach { warning ->
+                            Text("• $warning", fontSize = 10.sp, color = Color(0xFFF57C00))
+                        }
+                    }
                     if (importSourceLen > 0) {
                         Spacer(Modifier.height(6.dp))
                         val covColor = when {

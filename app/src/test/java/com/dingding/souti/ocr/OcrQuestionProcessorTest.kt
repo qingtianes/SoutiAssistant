@@ -26,7 +26,7 @@ class OcrQuestionProcessorTest {
     @Test
     fun `scan queries support chinese and english parentheses and answer colons`() {
         assertEquals(
-            listOf("第一题题干", "A 第二题题干"),
+            listOf("第一题题干（ ） A.甲", "第二题题干( ) B.乙"),
             OcrQuestionProcessor.extractScanQueries(
                 "第一题题干（ ） A.甲 答案：A 第二题题干( ) B.乙 答案:B"
             )
@@ -89,15 +89,41 @@ class OcrQuestionProcessorTest {
     }
 
     @Test
-    fun `screen read stem removes options parentheses and quoted rule prefix`() {
+    fun `screen read query preserves rule prefix parentheses and options for field matching`() {
         assertEquals(
-            "涂刷具有挥发性的涂料时应保持通风",
+            "依据《受限空间安全规范》涂刷具有挥发性的涂料时（正确做法）应保持通风 A.是 B.否",
             OcrQuestionProcessor.extractScreenReadStem(
                 "依据《受限空间安全规范》涂刷具有挥发性的涂料时（正确做法）应保持通风 A.是 B.否"
             )
         )
     }
 
+    @Test
+    fun `screen read never removes real latin initials`() {
+        assertEquals("DCS系统联锁的作用是什么", OcrQuestionProcessor.extractScreenReadStem("DCS系统联锁的作用是什么"))
+        assertEquals("A型材料应如何保存", OcrQuestionProcessor.extractScreenReadStem("A型材料应如何保存"))
+    }
+
+    @Test
+    fun `numbered lines split multiple questions without answer labels`() {
+        assertEquals(
+            listOf("1. 第一题题干 A.甲 B.乙", "2. 第二题题干 A.丙 B.丁"),
+            OcrQuestionProcessor.extractScanQueries(
+                "1. 第一题题干\nA.甲\nB.乙\n2. 第二题题干\nA.丙\nB.丁"
+            )
+        )
+    }
+
+
+    @Test
+    fun `processing preserves line boundaries when splitting numbered screen questions`() {
+        val seen = mutableListOf<String>()
+        OcrQuestionProcessor.processScanText(
+            "1. 第一题题干\nA.甲\nB.乙\n2. 第二题题干\nA.丙\nB.丁",
+            search = { query, _ -> seen += query; emptyList() }
+        )
+        assertEquals(listOf("1. 第一题题干 A.甲 B.乙", "2. 第二题题干 A.丙 B.丁"), seen)
+    }
     private fun questionResult(id: Long, score: Int, stem: String): SearchResult =
         SearchResult(
             question = Question(id, 1L, stem, emptyList(), "", "test"),
