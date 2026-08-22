@@ -8,22 +8,18 @@ import android.net.Uri
  * 各格式解析器已拆分到 TxtBankParser / DocxBankParser / PdfBankParser / XlsBankParser。
  */
 object Importer {
-
     data class ParseResult(
-        val chunks: List<String>,          // 每块 = 一道题整块文本
+        val chunks: List<String>,
         val hasNumbered: Boolean = false,
         val noNumberWithOption: Boolean = false,
         val blankSeparated: Boolean = false,
-        val sourceLength: Int = 0,         // ★ 源文件内容字数（验证覆盖率用）
-        val parsedLength: Int = 0,         // ★ 解析后题目总字数
-        val error: String? = null          // 非 null = 解析失败
+        val sourceLength: Int = 0,
+        val parsedLength: Int = 0,
+        val error: String? = null
     ) {
-        /** ★ 覆盖率：解析字数 / 源字数 × 100 */
         fun coverage(): Int =
-            if (sourceLength > 0) ((parsedLength.toDouble() / sourceLength * 100).toInt())
-            else 100
+            if (sourceLength > 0) ((parsedLength.toDouble() / sourceLength * 100).toInt()) else 100
 
-        /** ★ 覆盖率是否低于阈值（默认 60，pdf 用 55） */
         fun lowCoverage(threshold: Int = 60): Boolean = coverage() < threshold
     }
 
@@ -33,7 +29,7 @@ object Importer {
     fun parse(context: Context, uri: Uri, fileName: String): ParseResult {
         val resolver = context.contentResolver
         return when (detectFileFormat(resolver.getType(uri), fileName)) {
-            FileFormat.PDF -> PdfBankParser.parse(resolver.openInputStream(uri))
+            FileFormat.PDF -> PdfBankParser.parse(context, resolver.openInputStream(uri))
             FileFormat.DOCX -> DocxBankParser.parse(resolver.openInputStream(uri))
             FileFormat.XLS -> XlsBankParser.parse(resolver.openInputStream(uri))
             FileFormat.XLSX_UNSUPPORTED -> ParseResult(
@@ -48,13 +44,8 @@ object Importer {
         }
     }
 
-    // ============ 切块核心（已拆到 BankChunker，保留同名入口兼容旧调用） ============
-
     fun isSectionTitle(t: String): Boolean = BankChunker.isSectionTitle(t)
-
     fun isQuestionStart(t: String): Boolean = BankChunker.isQuestionStart(t)
-
     fun isOptionLine(t: String): Boolean = BankChunker.isOptionLine(t)
-
     fun chunkLines(txts: List<String>): ParseResult = BankChunker.chunkLines(txts)
 }

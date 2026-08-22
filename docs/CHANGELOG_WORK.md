@@ -58,3 +58,13 @@ related:
 - 服务运行时输出窗常驻，空结果显示“暂无输出”。
 - 移除主浮窗“向下/向上显示”开关，输出窗初始位于主浮窗下方，用户自由拖动。
 - 40 项测试通过，Lint 无错误。
+
+
+## 2026-08-22 Android 题库导入 BUG 修复（本地未推送）
+- 修复 `BankChunker`：对“空行分隔 + 答案标记”格式使用题块优先策略；答案步骤中的数字编号不再生成伪题。
+- 修复 `XlsBankParser`：移除 `stem.take(40)` 的错误去重；真实样例从错误的 432 条恢复为 435 条；支持换行选项导出；补充资源关闭。
+- 修复 `PdfBankParser`：导入前调用 `PDFBoxResourceLoader.init(context.applicationContext)`；`InputStream` 与 `PDDocument` 使用 `use`；捕获 `Throwable` 并返回可见错误。
+- 新增 `QuestionChunkParser`：把整题块正确拆为题干、选项、答案，导入后搜索字段不再混入选项与答案文本。
+- `ImportScreen`：解析异常不再让页面永久停留在加载状态；题目结构化失败会给出明确提示。
+- 新增回归测试：答案编号不误切题、题块结构化、XLS 选项分隔。
+- 样例验证：TXT 432 题，XLS 435 题；PDF 已完成代码级修复，待设备实测中文字体显示。

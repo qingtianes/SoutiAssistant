@@ -3,6 +3,7 @@ package com.dingding.souti.ui
 import com.dingding.souti.model.Question
 import com.dingding.souti.repository.QuestionBank
 import com.dingding.souti.import.Importer
+import com.dingding.souti.import.QuestionChunkParser
 
 import android.content.Context
 import android.net.Uri
@@ -87,8 +88,11 @@ fun ImportScreen(onBack: () -> Unit) {
             Thread {
                 val result = try {
                     Importer.parse(context, uri, cleanName)
-                } catch (e: Exception) {
-                    Importer.ParseResult(emptyList(), error = "解析异常：${e.message}")
+                } catch (e: Throwable) {
+                    Importer.ParseResult(
+                        emptyList(),
+                        error = "解析异常：${e.message?.takeIf { it.isNotBlank() } ?: e.javaClass.simpleName}"
+                    )
                 }
                 runOnUiThreadCompat(context) {
                     parsing = false
@@ -97,15 +101,14 @@ fun ImportScreen(onBack: () -> Unit) {
                         return@runOnUiThreadCompat
                     }
                     if (result.chunks.isNotEmpty()) {
-                        val questions = result.chunks.map { chunk ->
-                            Question(
-                                id = System.currentTimeMillis() + (0..999).random(),
-                                bankId = 0,
-                                stem = chunk,
-                                options = emptyList(),
-                                answer = "",
-                                source = cleanName
-                            )
+                        val importIdBase = System.currentTimeMillis()
+                        val questions = result.chunks.mapIndexedNotNull { index, chunk ->
+                            QuestionChunkParser.parse(chunk, cleanName, importIdBase + index)
+                        }
+                        if (questions.size != result.chunks.size) {
+                            parsedQuestions = null
+                            importMsg = "导入失败：有 ${result.chunks.size - questions.size} 道题无法拆分为有效题目，请检查文件格式。"
+                            return@runOnUiThreadCompat
                         }
                         parsedQuestions = questions
                         val cov = result.coverage()

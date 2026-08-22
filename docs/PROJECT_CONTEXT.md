@@ -4,7 +4,7 @@ description: Stable project facts, structure, workflows, resources, and constrai
 doc_type: context
 status: stable
 created: 2026-08-16
-updated: 2026-08-17
+updated: 2026-08-22
 tags:
   - project-memory
   - context
@@ -38,7 +38,7 @@ related:
 ## Project Structure（v1.0.2 实际）
 - `com.dingding.souti.model`：Bank、Question、SearchResult。
 - `com.dingding.souti.repository`：QuestionBank、QuestionRepository、QuestionMatcher、SettingsStore、SettingsLogic。
-- `com.dingding.souti.import`：Importer、FileFormatDetector、BankChunker、Txt/Docx/Pdf/Xls 解析器。
+- `com.dingding.souti.import`：Importer、FileFormatDetector、BankChunker、QuestionChunkParser、Txt/Docx/Pdf/Xls 解析器。
 - `com.dingding.souti.ocr`：OcrBridge、OcrHelper、OcrQuestionProcessor。
 - `com.dingding.souti.overlay`：FloatWindowService 及拆出的组件。
 - `com.dingding.souti.ui`：MainActivity、HomeScreen、ImportScreen、BankScreens、ScanScreen、SettingsScreen、UsageGuideScreen。
@@ -51,7 +51,7 @@ related:
 - 浮窗搜题：悬浮窗绿框实时 OCR 框内区域，单题答案输出到独立输出窗。
 - 读屏搜题：全屏实时 OCR，多题答案按顺序输出到独立小窗。
 - 扫描搜题：CameraX 实时取景 + 横向取景框 + 双指/按钮缩放，只识别框内，支持暂停/继续。
-- 题库导入：支持 .txt/.docx/.pdf/.xls，不支持 .xlsx。
+- 题库导入：支持 .txt/.docx/.pdf/.xls，不支持 .xlsx；TXT 空行题块优先，XLS 不再按前 40 字误去重，PDF 使用 PDFBox Android 资源初始化。
 - 设置中心：权限管理 / 识别与匹配 / 浮窗显示 / 扫描搜题 / 通用关于。
 
 ## Verification

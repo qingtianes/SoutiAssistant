@@ -4,7 +4,7 @@ description: Current tasks, blockers, verification state, and recommended next a
 doc_type: task_state
 status: active
 created: 2026-08-16
-updated: 2026-08-17
+updated: 2026-08-22
 tags:
   - project-memory
   - tasks
@@ -23,20 +23,20 @@ related:
 # Tasks
 
 ## Current State
-- Android v1.0.2 已发布 GitHub Release，主分支与标签已推送。
-- 用户验收通过。
+- Android v1.1.1 主线保持未 push 状态，本地正在修复题库导入回归问题。
+- 本次修复已通过单元测试、Lint 和 assembleDebug；等待用户在模拟器/真机导入三个样例文件验收。
 
 ## Recommended Next Action
-1. WorkBuddy 接手重做 UI（只改 `com.dingding.souti.ui`，读 HANDOFF_TO_WORKBUDDY.md）。
-2. UI 完成后由 Codex 集成、构建、测试、发布。
-3. 启动鸿蒙版本（`E:\SoutiAssistant_Harmony`，先只同步改动、不真机验证）。
+1. 安装本地 debug APK，分别导入 PDF、XLS、TXT 三个样例并核对题数与答案结构。
+2. 若用户验收通过，再决定是否提交/推送本次导入修复；本轮未 push。
+3. 导入修复确认后再继续鸿蒙版本。
 
 ## Verification
 - 单元测试通过；Lint 0 error；assembleDebug/assembleRelease 成功（JDK 21）。
 - 发布包命名规范：`SoutiAssistant-vX.Y.Z-release.apk`。
 
 ## Blockers
-- 无。
+- PDF 中文字体映射是否在用户设备上正常显示，仍需 Android 模拟器或真机导入验证。
 
 ## Done
 - [x] 浮窗搜题 / 读屏搜题 / 扫描搜题
@@ -47,3 +47,10 @@ related:
 - [x] 主页 B 极简卡片流 + 题库区置顶 + 右上角 ⓘ 使用说明
 - [x] App 内使用说明与 README 使用说明
 - [x] PRD / DESIGN / ACCEPTANCE / SECURITY / FINAL_AUDIT 文档
+
+## 2026-08-22 题库导入 BUG 修复
+- [x] TXT：空行分隔且带答案标记的题块优先，避免答案中的 `1、2、3、` 被误切成伪题。
+- [x] XLS：移除前 40 字错误去重，保留真实 435 条题目；补充换行选项分隔。
+- [x] PDF：初始化 `PDFBoxResourceLoader`，使用资源安全关闭，解析异常不再静默卡在“正在解析”。
+- [x] 导入结果：统一将题干、选项、答案拆入 `Question` 字段，而不是把整块文本全部放进题干。
+- [x] 回归：真实 TXT=432 题、真实 XLS=435 题；单测、Lint、Debug 构建通过。
